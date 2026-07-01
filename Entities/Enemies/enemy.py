@@ -1,5 +1,5 @@
 import pygame
-from Entities.entity import EntityBase
+from Entities.entity_base import EntityBase
 from constants import *
 
 class Enemy(EntityBase):
