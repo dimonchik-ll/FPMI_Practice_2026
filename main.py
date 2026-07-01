@@ -1,9 +1,9 @@
 import pygame
 import sys
 from constants import *
-from enemy import Enemy
-from tower import Tower
-from entity import Entity 
+from Entities.Enemies.enemy import Enemy
+from Entities.tower import Tower
+from Entities.entity import EntityBase 
 
 pygame.init()
 

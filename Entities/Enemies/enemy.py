@@ -1,8 +1,8 @@
 import pygame
-from entity import Entity
+from Entities.entity import EntityBase
 from constants import *
 
-class Enemy(Entity):
+class Enemy(EntityBase):
     def __init__(self):
         self.path = self.find_path()
         self.current_path_index = 0

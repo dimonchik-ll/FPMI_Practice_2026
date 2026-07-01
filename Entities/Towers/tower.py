@@ -1,9 +1,9 @@
 import pygame
-from entity import Entity
+from Entities.entity import EntityBase
 from constants import *
 import math
 
-class Tower(Entity):
+class Tower(EntityBase):
     def __init__(self):
         self.positions = self.find_positions()
 
