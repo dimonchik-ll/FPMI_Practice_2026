@@ -38,3 +38,5 @@ color_map = {
     4: BLUE,
     5: RED,
 }
+
+int = 5
