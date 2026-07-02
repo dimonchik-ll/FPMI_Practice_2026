@@ -4,6 +4,7 @@ from constants import *
 from Entities.Enemies.enemy import Enemy
 from Entities.Towers.tower import Tower
 from Entities.entity_base import EntityBase 
+from map import Map
 
 pygame.init()
 
@@ -31,6 +32,8 @@ entities.append(enemy)
 towers = Tower()
 entities.append(towers)
 
+map = Map("maps/demo.tmx")
+
 clock = pygame.time.Clock()
 running = True
 
@@ -39,11 +42,7 @@ while running:
         if event.type == pygame.QUIT:
             running = False
     
-    enemy.update()
-    screen.fill(LIGHT_BLUE)
-    draw_field()
-    enemy.draw(screen)
-    towers.draw(screen, CYAN)
+    map.draw_map(screen)
     pygame.display.flip()
     clock.tick(50)
 
