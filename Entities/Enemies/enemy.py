@@ -63,7 +63,7 @@ class Enemy(EntityBase):
     
     def get_position(self):
         x, y = self.path[self.current_path_index]
-        return x * CELL_SIZE + CELL_SIZE // 2, y * CELL_SIZE + CELL_SIZE // 2
+        return x * TILE_SIZE + TILE_SIZE // 2, y * TILE_SIZE + TILE_SIZE // 2
     
     def update(self):
         self.progress += self.speed
@@ -79,10 +79,10 @@ class Enemy(EntityBase):
         current = self.path[self.current_path_index]
         next_point = self.path[self.current_path_index + 1]
 
-        current_x = current[0] * CELL_SIZE + CELL_SIZE // 2
-        current_y = current[1] * CELL_SIZE + CELL_SIZE // 2
-        next_x = next_point[0] * CELL_SIZE + CELL_SIZE // 2
-        next_y = next_point[1] * CELL_SIZE + CELL_SIZE // 2
+        current_x = current[0] * TILE_SIZE + TILE_SIZE // 2
+        current_y = current[1] * TILE_SIZE + TILE_SIZE // 2
+        next_x = next_point[0] * TILE_SIZE + TILE_SIZE // 2
+        next_y = next_point[1] * TILE_SIZE + TILE_SIZE // 2
 
         self.x = current_x + (next_x - current_x) * self.progress
         self.y = current_y + (next_y - current_y) * self.progress
@@ -91,5 +91,5 @@ class Enemy(EntityBase):
         if self.end_of_path:
             return
 
-        pygame.draw.circle(surface, ENEMY_COLOR, (self.x, self.y), CELL_SIZE // 3)
-        pygame.draw.circle(surface, BLACK, (self.x, self.y), CELL_SIZE // 3, 1)
+        pygame.draw.circle(surface, ENEMY_COLOR, (self.x, self.y), TILE_SIZE // 3)
+        pygame.draw.circle(surface, BLACK, (self.x, self.y), TILE_SIZE // 3, 1)

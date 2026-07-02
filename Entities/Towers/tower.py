@@ -18,11 +18,11 @@ class Tower(EntityBase):
         return positions
     
     def draw(self, surface, color):
-        radius = CELL_SIZE // 3
+        radius = TILE_SIZE // 3
 
         for col, row in self.positions:
-            center_x = col * CELL_SIZE + CELL_SIZE // 2
-            center_y = row * CELL_SIZE + CELL_SIZE // 2
+            center_x = col * TILE_SIZE + TILE_SIZE // 2
+            center_y = row * TILE_SIZE + TILE_SIZE // 2
 
             points = []
             for i in range(6):
