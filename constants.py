@@ -13,11 +13,11 @@ field = [
     [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]
 ]
 
-CELL_SIZE = 60
+TILE_SIZE = 60
 rows = len(field)
 cols = len(field[0])
-WINDOW_WIDTH = cols * CELL_SIZE
-WINDOW_HEIGHT = rows * CELL_SIZE
+WINDOW_WIDTH = cols * TILE_SIZE
+WINDOW_HEIGHT = rows * TILE_SIZE
 
 GRAY = (99, 99, 99)
 LIGHT_GRAY = (168, 168, 168)
@@ -30,7 +30,7 @@ BLACK = (0, 0, 0)
 ENEMY_COLOR = (207, 12, 145)
 CYAN = (153, 95, 95)
 
-color_map = {
+COLOR_MAP = {
     0: LIGHT_GRAY,
     1: BROWN,
     2: GREEN,
