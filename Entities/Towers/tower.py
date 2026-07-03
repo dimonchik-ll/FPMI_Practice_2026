@@ -1,38 +1,55 @@
 import pygame
-from Entities.entity_base import EntityBase
-from constants import *
-import math
+from pygame.math import Vector2
 
-class Tower(EntityBase):
-    def __init__(self):
-        self.positions = self.find_positions()
 
-    def find_positions(self):
-        positions = []
+class Tower:
+    def __init__(self, x, y):
+        self.position = Vector2(x, y)
 
-        for row in range(rows):
-            for col in range(cols):
-                if field[row][col] == 1:
-                    positions.append((col, row))
+        self.range = 130
+        self.damage = 25
+        self.attack_delay = 0.7
+        self.attack_timer = 0.0
 
-        return positions
-    
-    def draw(self, surface, color):
-        radius = CELL_SIZE // 3
+        self.size = 22
 
-        for col, row in self.positions:
-            center_x = col * CELL_SIZE + CELL_SIZE // 2
-            center_y = row * CELL_SIZE + CELL_SIZE // 2
+    def find_target(self, enemies):
+        closest_enemy = None
+        closest_distance = self.range
 
-            points = []
-            for i in range(6):
-                angle_deg = 60 * i
-                angle_rad = math.radians(angle_deg)
-                x = center_x + radius * math.cos(angle_rad)
-                y = center_y + radius * math.sin(angle_rad)
-                points.append((x, y))
+        for enemy in enemies:
+            if not enemy.alive:
+                continue
 
-            pygame.draw.polygon(surface, color, points)
-            pygame.draw.polygon(surface, BLACK, points, 1)
+            distance = self.position.distance_to(enemy.position)
 
-    def update(self): pass
+            if distance <= closest_distance:
+                closest_enemy = enemy
+                closest_distance = distance
+
+        return closest_enemy
+
+    def update(self, dt, enemies):
+        self.attack_timer += dt
+
+        target = self.find_target(enemies)
+
+        if target is not None and self.attack_timer >= self.attack_delay:
+            target.take_damage(self.damage)
+            self.attack_timer = 0.0
+
+    def draw(self, screen):
+        pygame.draw.circle(
+            screen,
+            (70, 120, 255),
+            (int(self.position.x), int(self.position.y)),
+            self.size
+        )
+
+        pygame.draw.circle(
+            screen,
+            (130, 170, 255),
+            (int(self.position.x), int(self.position.y)),
+            self.range,
+            1
+        )

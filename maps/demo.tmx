@@ -1,54 +1,54 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='UTF-8'?>
 <map version="1.10" tiledversion="1.12.2" orientation="orthogonal" renderorder="right-down" width="30" height="20" tilewidth="32" tileheight="32" infinite="0" nextlayerid="5" nextobjectid="1">
- <tileset firstgid="1" source="TSXs/1 Tiles/FieldsTileset.tsx"/>
- <tileset firstgid="65" source="TSXs/2 Objects/9 Bush/1.tsx"/>
- <tileset firstgid="66" source="TSXs/2 Objects/9 Bush/2.tsx"/>
- <tileset firstgid="67" source="TSXs/2 Objects/9 Bush/3.tsx"/>
- <tileset firstgid="68" source="TSXs/2 Objects/9 Bush/4.tsx"/>
- <tileset firstgid="69" source="TSXs/2 Objects/9 Bush/5.tsx"/>
- <tileset firstgid="70" source="TSXs/2 Objects/9 Bush/6.tsx"/>
- <tileset firstgid="71" source="TSXs/2 Objects/7 Decor/Tree1.tsx"/>
- <tileset firstgid="72" source="TSXs/2 Objects/7 Decor/Tree2.tsx"/>
- <tileset firstgid="73" source="TSXs/2 Objects/7 Decor/Box1.tsx"/>
- <tileset firstgid="74" source="TSXs/2 Objects/7 Decor/Box2.tsx"/>
- <tileset firstgid="75" source="TSXs/2 Objects/7 Decor/Box3.tsx"/>
- <tileset firstgid="76" source="TSXs/2 Objects/7 Decor/Box4.tsx"/>
- <tileset firstgid="77" source="TSXs/2 Objects/7 Decor/Lamp1.tsx"/>
- <tileset firstgid="78" source="TSXs/2 Objects/7 Decor/Lamp2.tsx"/>
- <tileset firstgid="79" source="TSXs/2 Objects/7 Decor/Lamp3.tsx"/>
- <tileset firstgid="80" source="TSXs/2 Objects/7 Decor/Log1.tsx"/>
- <tileset firstgid="81" source="TSXs/2 Objects/7 Decor/Log2.tsx"/>
- <tileset firstgid="82" source="TSXs/2 Objects/7 Decor/Log3.tsx"/>
- <tileset firstgid="83" source="TSXs/2 Objects/7 Decor/Log4.tsx"/>
- <tileset firstgid="84" source="TSXs/2 Objects/3 Pointer/1.tsx"/>
- <tileset firstgid="85" source="TSXs/2 Objects/3 Pointer/2.tsx"/>
- <tileset firstgid="86" source="TSXs/2 Objects/3 Pointer/3.tsx"/>
- <tileset firstgid="87" source="TSXs/2 Objects/3 Pointer/4.tsx"/>
- <tileset firstgid="88" source="TSXs/2 Objects/3 Pointer/5.tsx"/>
- <tileset firstgid="89" source="TSXs/2 Objects/3 Pointer/6.tsx"/>
- <tileset firstgid="90" source="TSXs/2 Objects/4 Stone/7.tsx"/>
- <tileset firstgid="91" source="TSXs/2 Objects/4 Stone/8.tsx"/>
- <tileset firstgid="92" source="TSXs/2 Objects/4 Stone/10.tsx"/>
- <tileset firstgid="93" source="TSXs/2 Objects/4 Stone/11.tsx"/>
- <tileset firstgid="94" source="TSXs/2 Objects/4 Stone/12.tsx"/>
- <tileset firstgid="95" source="TSXs/2 Objects/8 Camp/1.tsx"/>
- <tileset firstgid="96" source="TSXs/2 Objects/8 Camp/2.tsx"/>
- <tileset firstgid="97" source="TSXs/2 Objects/8 Camp/3.tsx"/>
- <tileset firstgid="98" source="TSXs/2 Objects/8 Camp/4.tsx"/>
- <tileset firstgid="99" source="TSXs/2 Objects/8 Camp/5.tsx"/>
- <tileset firstgid="100" source="TSXs/2 Objects/8 Camp/6.tsx"/>
- <tileset firstgid="101" source="TSXs/2 Objects/PlaceForTower1.tsx"/>
- <tileset firstgid="102" source="TSXs/2 Objects/PlaceForTower2.tsx"/>
- <tileset firstgid="103" source="TSXs/2 Objects/2 Fence/1.tsx"/>
- <tileset firstgid="104" source="TSXs/2 Objects/2 Fence/2.tsx"/>
- <tileset firstgid="105" source="TSXs/2 Objects/2 Fence/3.tsx"/>
- <tileset firstgid="106" source="TSXs/2 Objects/2 Fence/4.tsx"/>
- <tileset firstgid="107" source="TSXs/2 Objects/2 Fence/7.tsx"/>
- <tileset firstgid="108" source="TSXs/2 Objects/2 Fence/8.tsx"/>
- <tileset firstgid="109" source="TSXs/2 Objects/1 Shadow/1.tsx"/>
- <tileset firstgid="110" source="TSXs/2 Objects/1 Shadow/4.tsx"/>
- <tileset firstgid="111" source="TSXs/2 Objects/1 Shadow/5.tsx"/>
- <tileset firstgid="112" source="TSXs/2 Objects/1 Shadow/6.tsx"/>
+ <tileset firstgid="1" source="TSXs/1 Tiles/FieldsTileset.tsx" />
+ <tileset firstgid="65" source="TSXs/2 Objects/9 Bush/1.tsx" />
+ <tileset firstgid="66" source="TSXs/2 Objects/9 Bush/2.tsx" />
+ <tileset firstgid="67" source="TSXs/2 Objects/9 Bush/3.tsx" />
+ <tileset firstgid="68" source="TSXs/2 Objects/9 Bush/4.tsx" />
+ <tileset firstgid="69" source="TSXs/2 Objects/9 Bush/5.tsx" />
+ <tileset firstgid="70" source="TSXs/2 Objects/9 Bush/6.tsx" />
+ <tileset firstgid="71" source="TSXs/2 Objects/7 Decor/Tree1.tsx" />
+ <tileset firstgid="72" source="TSXs/2 Objects/7 Decor/Tree2.tsx" />
+ <tileset firstgid="73" source="TSXs/2 Objects/7 Decor/Box1.tsx" />
+ <tileset firstgid="74" source="TSXs/2 Objects/7 Decor/Box2.tsx" />
+ <tileset firstgid="75" source="TSXs/2 Objects/7 Decor/Box3.tsx" />
+ <tileset firstgid="76" source="TSXs/2 Objects/7 Decor/Box4.tsx" />
+ <tileset firstgid="77" source="TSXs/2 Objects/7 Decor/Lamp1.tsx" />
+ <tileset firstgid="78" source="TSXs/2 Objects/7 Decor/Lamp2.tsx" />
+ <tileset firstgid="79" source="TSXs/2 Objects/7 Decor/Lamp3.tsx" />
+ <tileset firstgid="80" source="TSXs/2 Objects/7 Decor/Log1.tsx" />
+ <tileset firstgid="81" source="TSXs/2 Objects/7 Decor/Log2.tsx" />
+ <tileset firstgid="82" source="TSXs/2 Objects/7 Decor/Log3.tsx" />
+ <tileset firstgid="83" source="TSXs/2 Objects/7 Decor/Log4.tsx" />
+ <tileset firstgid="84" source="TSXs/2 Objects/3 Pointer/1.tsx" />
+ <tileset firstgid="85" source="TSXs/2 Objects/3 Pointer/2.tsx" />
+ <tileset firstgid="86" source="TSXs/2 Objects/3 Pointer/3.tsx" />
+ <tileset firstgid="87" source="TSXs/2 Objects/3 Pointer/4.tsx" />
+ <tileset firstgid="88" source="TSXs/2 Objects/3 Pointer/5.tsx" />
+ <tileset firstgid="89" source="TSXs/2 Objects/3 Pointer/6.tsx" />
+ <tileset firstgid="90" source="TSXs/2 Objects/4 Stone/7.tsx" />
+ <tileset firstgid="91" source="TSXs/2 Objects/4 Stone/8.tsx" />
+ <tileset firstgid="92" source="TSXs/2 Objects/4 Stone/10.tsx" />
+ <tileset firstgid="93" source="TSXs/2 Objects/4 Stone/11.tsx" />
+ <tileset firstgid="94" source="TSXs/2 Objects/4 Stone/12.tsx" />
+ <tileset firstgid="95" source="TSXs/2 Objects/8 Camp/1.tsx" />
+ <tileset firstgid="96" source="TSXs/2 Objects/8 Camp/2.tsx" />
+ <tileset firstgid="97" source="TSXs/2 Objects/8 Camp/3.tsx" />
+ <tileset firstgid="98" source="TSXs/2 Objects/8 Camp/4.tsx" />
+ <tileset firstgid="99" source="TSXs/2 Objects/8 Camp/5.tsx" />
+ <tileset firstgid="100" source="TSXs/2 Objects/8 Camp/6.tsx" />
+ <tileset firstgid="101" source="TSXs/2 Objects/PlaceForTower1.tsx" />
+ <tileset firstgid="102" source="TSXs/2 Objects/PlaceForTower2.tsx" />
+ <tileset firstgid="103" source="TSXs/2 Objects/2 Fence/1.tsx" />
+ <tileset firstgid="104" source="TSXs/2 Objects/2 Fence/2.tsx" />
+ <tileset firstgid="105" source="TSXs/2 Objects/2 Fence/3.tsx" />
+ <tileset firstgid="106" source="TSXs/2 Objects/2 Fence/4.tsx" />
+ <tileset firstgid="107" source="TSXs/2 Objects/2 Fence/7.tsx" />
+ <tileset firstgid="108" source="TSXs/2 Objects/2 Fence/8.tsx" />
+ <tileset firstgid="109" source="TSXs/2 Objects/1 Shadow/1.tsx" />
+ <tileset firstgid="110" source="TSXs/2 Objects/1 Shadow/4.tsx" />
+ <tileset firstgid="111" source="TSXs/2 Objects/1 Shadow/5.tsx" />
+ <tileset firstgid="112" source="TSXs/2 Objects/1 Shadow/6.tsx" />
  <layer id="1" name="Floor" width="30" height="20" locked="1">
   <data encoding="csv">
 38,38,38,38,38,38,38,38,38,38,38,38,38,38,38,38,38,38,38,38,38,38,38,38,38,38,38,38,38,38,
