@@ -1,0 +1,1808 @@
+diff --git a/README_TEAM.md b/README_TEAM.md
+new file mode 100644
+index 0000000..14f2d96
+--- /dev/null
++++ b/README_TEAM.md
+@@ -0,0 +1,20 @@
++# Team scaffold для Tower Defense
++
++Этот набор добавляет независимые модули для четырёх разработчиков. Базовая игра запускается через:
++
++```bash
++python team_launcher.py
++```
++
++Установка:
++
++```bash
++python -m venv .venv
++source .venv/bin/activate
++pip install -r requirements-dev.txt
++python tools/import_assets.py --tiles /путь/tiles.zip --enemies /путь/enemies.zip --towers /путь/towers.zip
++python -m pytest -q
++python team_launcher.py
++```
++
++Подробный план и договорённости: [`docs/TEAM_PLAN.md`](docs/TEAM_PLAN.md).
+diff --git a/assets/README.md b/assets/README.md
+new file mode 100644
+index 0000000..aee2eae
+--- /dev/null
++++ b/assets/README.md
+@@ -0,0 +1,14 @@
++# Ассеты
++
++После применения patch запусти импортёр:
++
++```bash
++python tools/import_assets.py \
++  --tiles /путь/к/craftpix_net_665131_free_fields_tileset_pixel_art_for_tower_defense.zip \
++  --enemies /путь/к/craftpix-net-255707-free-field-enemies-pixel-art-for-tower-defense.zip \
++  --towers /путь/к/craftpix-net-658475-free-archer-towers-pixel-art-for-tower-defense.zip
++```
++
++Он создаст папки `tiles/`, `towers/`, `enemies/`, `projectiles/` и `licenses/` с предсказуемыми именами. Без импортированных PNG игра использует простые геометрические заглушки, поэтому разработка модулей не блокируется.
++
++Файлы лицензий из исходных архивов копируются в `assets/licenses/`. Перед публикацией игры проверь условия использования в этих файлах.
+diff --git a/core/README.md b/core/README.md
+new file mode 100644
+index 0000000..fa3920a
+--- /dev/null
++++ b/core/README.md
+@@ -0,0 +1,14 @@
++# Разработчик 1 — core
++
++В этой папке находятся карта, путь, координаты клеток и базовая игровая сцена.
++
++Можно менять только `core/` и `assets/tiles/`.
++
++Контракт для других модулей нельзя ломать:
++
++- `GameMap.build_route() -> tuple[Vector2, ...]`
++- `GameMap.world_to_cell(position) -> GridCell`
++- `GameMap.is_buildable(cell) -> bool`
++- `CoreWorld.create_build_request(cell, tower_kind) -> BuildRequest | None`
++
++Проверка: `python -m core.sandbox`.
+diff --git a/core/__init__.py b/core/__init__.py
+new file mode 100644
+index 0000000..4a11bad
+--- /dev/null
++++ b/core/__init__.py
+@@ -0,0 +1,4 @@
++from core.game_shell import CoreWorld
++from core.map_model import GameMap
++
++__all__ = ["CoreWorld", "GameMap"]
+diff --git a/core/game_shell.py b/core/game_shell.py
+new file mode 100644
+index 0000000..f79fb82
+--- /dev/null
++++ b/core/game_shell.py
+@@ -0,0 +1,29 @@
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++
++from core.map_model import GameMap
++from shared.contracts import BuildRequest, GridCell, Vector2
++
++
++@dataclass(slots=True)
++class CoreWorld:
++    game_map: GameMap = field(default_factory=GameMap.create_default)
++
++    def route(self) -> tuple[Vector2, ...]:
++        return self.game_map.build_route()
++
++    def create_build_request(self, cell: GridCell, tower_kind) -> BuildRequest | None:
++        if not self.game_map.is_buildable(cell):
++            return None
++        return BuildRequest(
++            tower_kind=tower_kind,
++            cell=cell,
++            position=self.game_map.cell_center(cell),
++        )
++
++    def confirm_build(self, cell: GridCell) -> bool:
++        return self.game_map.occupy(cell)
++
++    def cancel_build(self, cell: GridCell) -> None:
++        self.game_map.release(cell)
+diff --git a/core/map_model.py b/core/map_model.py
+new file mode 100644
+index 0000000..e161e7d
+--- /dev/null
++++ b/core/map_model.py
+@@ -0,0 +1,119 @@
++from __future__ import annotations
++
++from collections import deque
++from dataclasses import dataclass, field
++
++from shared.contracts import GridCell, TileKind, Vector2
++
++DEFAULT_LEVEL: tuple[tuple[TileKind, ...], ...] = (
++    (TileKind.BLOCKED, TileKind.BLOCKED, TileKind.BLOCKED, TileKind.BLOCKED, TileKind.BLOCKED, TileKind.BLOCKED, TileKind.BLOCKED, TileKind.BLOCKED, TileKind.BLOCKED, TileKind.BLOCKED, TileKind.BLOCKED, TileKind.BLOCKED, TileKind.BLOCKED, TileKind.BLOCKED, TileKind.BLOCKED, TileKind.BLOCKED, TileKind.BLOCKED, TileKind.BLOCKED),
++    (TileKind.BLOCKED, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.BLOCKED),
++    (TileKind.BLOCKED, TileKind.GRASS, TileKind.GRASS, TileKind.SPAWN, TileKind.ROAD, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.BLOCKED),
++    (TileKind.BLOCKED, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.ROAD, TileKind.BUILD_SLOT, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.BLOCKED),
++    (TileKind.BLOCKED, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.ROAD, TileKind.ROAD, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.BLOCKED),
++    (TileKind.BLOCKED, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.BUILD_SLOT, TileKind.ROAD, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.BUILD_SLOT, TileKind.GRASS, TileKind.GRASS, TileKind.ROAD, TileKind.ROAD, TileKind.ROAD, TileKind.GOAL, TileKind.GRASS, TileKind.BLOCKED),
++    (TileKind.BLOCKED, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.ROAD, TileKind.ROAD, TileKind.ROAD, TileKind.ROAD, TileKind.ROAD, TileKind.ROAD, TileKind.ROAD, TileKind.ROAD, TileKind.BUILD_SLOT, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.BLOCKED),
++    (TileKind.BLOCKED, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.BUILD_SLOT, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.BLOCKED),
++    (TileKind.BLOCKED, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.GRASS, TileKind.BLOCKED),
++    (TileKind.BLOCKED, TileKind.BLOCKED, TileKind.BLOCKED, TileKind.BLOCKED, TileKind.BLOCKED, TileKind.BLOCKED, TileKind.BLOCKED, TileKind.BLOCKED, TileKind.BLOCKED, TileKind.BLOCKED, TileKind.BLOCKED, TileKind.BLOCKED, TileKind.BLOCKED, TileKind.BLOCKED, TileKind.BLOCKED, TileKind.BLOCKED, TileKind.BLOCKED, TileKind.BLOCKED),
++)
++
++
++@dataclass(slots=True)
++class GameMap:
++    tiles: list[list[TileKind]]
++    tile_size: int = 48
++    occupied_cells: set[GridCell] = field(default_factory=set)
++
++    @classmethod
++    def create_default(cls) -> "GameMap":
++        return cls(tiles=[list(row) for row in DEFAULT_LEVEL])
++
++    @property
++    def rows(self) -> int:
++        return len(self.tiles)
++
++    @property
++    def cols(self) -> int:
++        return len(self.tiles[0])
++
++    @property
++    def pixel_width(self) -> int:
++        return self.cols * self.tile_size
++
++    @property
++    def pixel_height(self) -> int:
++        return self.rows * self.tile_size
++
++    def is_inside(self, cell: GridCell) -> bool:
++        row, col = cell
++        return 0 <= row < self.rows and 0 <= col < self.cols
++
++    def tile_at(self, cell: GridCell) -> TileKind:
++        row, col = cell
++        if not self.is_inside(cell):
++            return TileKind.BLOCKED
++        return self.tiles[row][col]
++
++    def world_to_cell(self, position: Vector2) -> GridCell:
++        return int(position.y // self.tile_size), int(position.x // self.tile_size)
++
++    def cell_center(self, cell: GridCell) -> Vector2:
++        row, col = cell
++        return Vector2(
++            x=col * self.tile_size + self.tile_size / 2,
++            y=row * self.tile_size + self.tile_size / 2,
++        )
++
++    def is_buildable(self, cell: GridCell) -> bool:
++        return self.tile_at(cell) == TileKind.BUILD_SLOT and cell not in self.occupied_cells
++
++    def occupy(self, cell: GridCell) -> bool:
++        if not self.is_buildable(cell):
++            return False
++        self.occupied_cells.add(cell)
++        return True
++
++    def release(self, cell: GridCell) -> None:
++        self.occupied_cells.discard(cell)
++
++    def build_route(self) -> tuple[Vector2, ...]:
++        start = self._find(TileKind.SPAWN)
++        goal = self._find(TileKind.GOAL)
++        if start is None or goal is None:
++            return ()
++
++        allowed = {TileKind.SPAWN, TileKind.ROAD, TileKind.GOAL}
++        queue: deque[GridCell] = deque([start])
++        previous: dict[GridCell, GridCell | None] = {start: None}
++
++        while queue:
++            cell = queue.popleft()
++            if cell == goal:
++                break
++            row, col = cell
++            for neighbor in ((row - 1, col), (row + 1, col), (row, col - 1), (row, col + 1)):
++                if neighbor in previous:
++                    continue
++                if self.tile_at(neighbor) not in allowed:
++                    continue
++                previous[neighbor] = cell
++                queue.append(neighbor)
++
++        if goal not in previous:
++            return ()
++
++        route_cells: list[GridCell] = []
++        cursor: GridCell | None = goal
++        while cursor is not None:
++            route_cells.append(cursor)
++            cursor = previous[cursor]
++        route_cells.reverse()
++        return tuple(self.cell_center(cell) for cell in route_cells)
++
++    def _find(self, target: TileKind) -> GridCell | None:
++        for row_index, row in enumerate(self.tiles):
++            for col_index, tile in enumerate(row):
++                if tile == target:
++                    return row_index, col_index
++        return None
+diff --git a/core/map_renderer.py b/core/map_renderer.py
+new file mode 100644
+index 0000000..d8a17ae
+--- /dev/null
++++ b/core/map_renderer.py
+@@ -0,0 +1,50 @@
++from __future__ import annotations
++
++import pygame
++
++from core.map_model import GameMap
++from shared.asset_manifest import TILE_ASSETS
++from shared.assets import load_image
++from shared.contracts import TileKind
++
++
++class MapRenderer:
++    def draw(self, surface: pygame.Surface, game_map: GameMap) -> None:
++        size = game_map.tile_size
++        grass = load_image(TILE_ASSETS["grass"], (size, size))
++        road = load_image(TILE_ASSETS["road"], (size, size))
++        build_slot = load_image(TILE_ASSETS["build_slot"], (size, size))
++
++        for row in range(game_map.rows):
++            for col in range(game_map.cols):
++                cell = (row, col)
++                rect = pygame.Rect(col * size, row * size, size, size)
++                tile = game_map.tile_at(cell)
++
++                if tile == TileKind.BLOCKED:
++                    pygame.draw.rect(surface, (56, 75, 56), rect)
++                    continue
++
++                if tile in {TileKind.ROAD, TileKind.SPAWN, TileKind.GOAL}:
++                    if road is not None:
++                        surface.blit(road, rect)
++                    else:
++                        pygame.draw.rect(surface, (190, 126, 75), rect)
++                else:
++                    if grass is not None:
++                        surface.blit(grass, rect)
++                    else:
++                        pygame.draw.rect(surface, (107, 160, 80), rect)
++
++                if tile == TileKind.BUILD_SLOT and cell not in game_map.occupied_cells:
++                    if build_slot is not None:
++                        surface.blit(build_slot, rect)
++                    else:
++                        pygame.draw.circle(surface, (220, 196, 102), rect.center, size // 3, 2)
++
++                if tile == TileKind.SPAWN:
++                    pygame.draw.circle(surface, (82, 149, 221), rect.center, size // 5)
++                elif tile == TileKind.GOAL:
++                    pygame.draw.circle(surface, (197, 71, 64), rect.center, size // 5)
++
++                pygame.draw.rect(surface, (40, 56, 40), rect, 1)
+diff --git a/core/sandbox.py b/core/sandbox.py
+new file mode 100644
+index 0000000..39361b7
+--- /dev/null
++++ b/core/sandbox.py
+@@ -0,0 +1,34 @@
++import pygame
++
++from core.map_model import GameMap
++from core.map_renderer import MapRenderer
++
++
++def main() -> None:
++    pygame.init()
++    game_map = GameMap.create_default()
++    screen = pygame.display.set_mode((game_map.pixel_width, game_map.pixel_height))
++    pygame.display.set_caption("Core sandbox")
++    clock = pygame.time.Clock()
++    renderer = MapRenderer()
++    running = True
++
++    while running:
++        for event in pygame.event.get():
++            if event.type == pygame.QUIT:
++                running = False
++            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
++                row = event.pos[1] // game_map.tile_size
++                col = event.pos[0] // game_map.tile_size
++                game_map.occupy((row, col))
++
++        screen.fill((25, 35, 25))
++        renderer.draw(screen, game_map)
++        pygame.display.flip()
++        clock.tick(60)
++
++    pygame.quit()
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/docs/TEAM_PLAN.md b/docs/TEAM_PLAN.md
+new file mode 100644
+index 0000000..3bf6bd9
+--- /dev/null
++++ b/docs/TEAM_PLAN.md
+@@ -0,0 +1,86 @@
++# План параллельной разработки
++
++## Один раз делает тимлид
++
++1. Применяет `tower_defense_team_scaffold.patch`.
++2. Импортирует ассеты через `tools/import_assets.py`.
++3. Проверяет `python -m pytest -q` и `python team_launcher.py`.
++4. Каждый разработчик создаёт ветку от этого коммита.
++
++## Владение кодом
++
++| Разработчик | Ветка | Можно менять | Нельзя менять без общего решения |
++|---|---|---|---|
++| 1: карта и core | `dev-core-map` | `core/`, `assets/tiles/` | `shared/`, `integration/`, чужие папки |
++| 2: башни и снаряды | `dev-towers-assets` | `towers/`, `assets/towers/`, `assets/projectiles/` | `shared/`, `integration/`, чужие папки |
++| 3: враги и волны | `dev-enemies-waves` | `enemies/`, `assets/enemies/` | `shared/`, `integration/`, чужие папки |
++| 4: UI и экономика | `dev-ui-economy` | `ui/`, `assets/ui/`, документация UI | `shared/`, `integration/`, чужие папки |
++
++`shared/contracts.py`, `shared/asset_manifest.py` и `integration/app.py` считаются замороженными до этапа слияния. Изменение контракта обсуждается всей командой, потому что его используют все модули.
++
++## Контракты между модулями
++
++- `core` отдаёт маршрут `tuple[Vector2, ...]`, клетку `GridCell` и `BuildRequest`.
++- `enemies` отдаёт `tuple[EnemyView, ...]`, принимает `list[DamageCommand]`, возвращает `list[GameEvent]`.
++- `towers` принимает `tuple[EnemyView, ...]`, возвращает `list[DamageCommand]`.
++- `ui` получает `GameSnapshot` для отрисовки и отдаёт `UiAction` при клике.
++
++Запрещены импорты между соседними модулями: `towers` не импортирует `enemies`, `enemies` не импортирует `towers`, UI не импортирует реализацию core.
++
++## Задачи
++
++### Разработчик 1 — карта и ядро
++
++- заменить временные цвета на тайлы поля;
++- улучшить карту и путь;
++- добавить несколько уровней и выбор уровня;
++- добавить проверку кликов и мест для строительства;
++- сохранить API `GameMap` и `CoreWorld`.
++
++Готово, когда `python -m core.sandbox` показывает карту, маршрут существует и башню нельзя поставить за пределами build slot.
++
++### Разработчик 2 — башни и ассеты
++
++- использовать idle/attack-спрайты арчер-башен;
++- добавить снаряды и их движение;
++- добавить приоритет цели и виды атак;
++- добавить уровни/новые типы башен;
++- не менять способ передачи урона: итог всегда `DamageCommand`.
++
++Готово, когда `python -m towers.sandbox` показывает башню и она создаёт команды урона для `EnemyView` в радиусе.
++
++### Разработчик 3 — враги и волны
++
++- назначить понятные имена четырём наборам врагов;
++- добавить анимации ходьбы, атаки, смерти;
++- доработать логику спавна, волн и сложности;
++- добавить особые свойства врагов;
++- оставлять наружный интерфейс `EnemySystem` совместимым.
++
++Готово, когда `python -m enemies.sandbox` запускает волну, враги идут по маршруту, получают урон и корректно создают `GameEvent`.
++
++### Разработчик 4 — UI и экономика
++
++- улучшить HUD, меню выбора башни и подсказки;
++- добавить паузу, настройки, экран победы и поражения;
++- балансировать стартовые деньги и стоимость;
++- не помещать игровую механику башен/врагов внутрь UI;
++- возвращать действия только как `UiAction`.
++
++Готово, когда `python -m ui.sandbox` работает без карты и врагов.
++
++## Проверки перед Pull Request
++
++```bash
++python -m pytest -q
++python -m core.sandbox
++python -m towers.sandbox
++python -m enemies.sandbox
++python -m ui.sandbox
++```
++
++В Pull Request разработчик прикладывает короткое описание, скриншот/видео и список затронутых файлов.
++
++## Интеграция
++
++После слияния четырёх веток тимлид проверяет `python team_launcher.py`. Если требуется поменять общий контракт, изменения выполняются отдельным Pull Request после совместного согласования.
+diff --git a/enemies/README.md b/enemies/README.md
+new file mode 100644
+index 0000000..9828128
+--- /dev/null
++++ b/enemies/README.md
+@@ -0,0 +1,9 @@
++# Разработчик 3 — enemies
++
++Можно менять только `enemies/` и `assets/enemies/`.
++
++Модуль врагов не импортирует `towers/`. Он принимает `list[DamageCommand]` в `EnemySystem.apply_damage`, а наружу отдаёт `tuple[EnemyView, ...]` и `list[GameEvent]`.
++
++Текущий код поддерживает маршрут, очереди волн, получение урона, награды и достижение базы.
++
++Проверка: `python -m enemies.sandbox`.
+diff --git a/enemies/__init__.py b/enemies/__init__.py
+new file mode 100644
+index 0000000..29a05aa
+--- /dev/null
++++ b/enemies/__init__.py
+@@ -0,0 +1,3 @@
++from enemies.api import EnemySystem
++
++__all__ = ["EnemySystem"]
+diff --git a/enemies/api.py b/enemies/api.py
+new file mode 100644
+index 0000000..365a320
+--- /dev/null
++++ b/enemies/api.py
+@@ -0,0 +1,181 @@
++from __future__ import annotations
++
++from dataclasses import dataclass
++
++from shared.asset_manifest import ENEMY_WALK_SHEETS
++from shared.assets import load_sprite_frame
++from shared.contracts import (
++    DamageCommand,
++    ENEMY_DEFINITIONS,
++    EnemyKind,
++    EnemyView,
++    GameEvent,
++    GameEventKind,
++    Vector2,
++)
++
++WAVE_PLANS: dict[int, tuple[EnemyKind, ...]] = {
++    1: (EnemyKind.ENEMY_1,) * 5,
++    2: (EnemyKind.ENEMY_1,) * 7 + (EnemyKind.ENEMY_2,) * 2,
++    3: (EnemyKind.ENEMY_2,) * 5 + (EnemyKind.ENEMY_3,) * 2,
++    4: (EnemyKind.ENEMY_3,) * 5 + (EnemyKind.ENEMY_4,),
++}
++
++
++@dataclass(slots=True)
++class _EnemyRuntime:
++    identifier: str
++    kind: EnemyKind
++    position: Vector2
++    path: tuple[Vector2, ...]
++    path_index: int
++    health: int
++    animation_time: float = 0.0
++
++
++class EnemySystem:
++    def __init__(self) -> None:
++        self._enemies: list[_EnemyRuntime] = []
++        self._queue: list[EnemyKind] = []
++        self._route: tuple[Vector2, ...] = ()
++        self._spawn_cooldown = 0.0
++        self._next_id = 1
++        self._active_wave: int | None = None
++
++    def start_wave(self, wave_number: int, route: tuple[Vector2, ...]) -> bool:
++        if self._active_wave is not None or not route:
++            return False
++        self._active_wave = wave_number
++        self._route = route
++        self._queue = list(WAVE_PLANS.get(wave_number, WAVE_PLANS[max(WAVE_PLANS)]))
++        self._spawn_cooldown = 0.0
++        return True
++
++    def update(self, delta_time: float) -> list[GameEvent]:
++        events: list[GameEvent] = []
++        self._spawn_cooldown -= delta_time
++        if self._queue and self._spawn_cooldown <= 0:
++            self._spawn(self._queue.pop(0))
++            self._spawn_cooldown = 0.75
++
++        survivors: list[_EnemyRuntime] = []
++        for enemy in self._enemies:
++            enemy.animation_time += delta_time
++            reached_goal = self._move(enemy, delta_time)
++            if reached_goal:
++                definition = ENEMY_DEFINITIONS[enemy.kind]
++                events.append(
++                    GameEvent(
++                        kind=GameEventKind.ENEMY_REACHED_GOAL,
++                        payload={"enemy_id": enemy.identifier, "damage": definition.base_damage},
++                    )
++                )
++            else:
++                survivors.append(enemy)
++        self._enemies = survivors
++
++        if self._active_wave is not None and not self._queue and not self._enemies:
++            events.append(
++                GameEvent(
++                    kind=GameEventKind.WAVE_COMPLETED,
++                    payload={"wave_number": self._active_wave},
++                )
++            )
++            self._active_wave = None
++        return events
++
++    def apply_damage(self, commands: list[DamageCommand]) -> list[GameEvent]:
++        damage_by_id: dict[str, int] = {}
++        for command in commands:
++            damage_by_id[command.target_id] = damage_by_id.get(command.target_id, 0) + command.amount
++
++        events: list[GameEvent] = []
++        survivors: list[_EnemyRuntime] = []
++        for enemy in self._enemies:
++            enemy.health -= damage_by_id.get(enemy.identifier, 0)
++            if enemy.health <= 0:
++                definition = ENEMY_DEFINITIONS[enemy.kind]
++                events.append(
++                    GameEvent(
++                        kind=GameEventKind.ENEMY_DEFEATED,
++                        payload={"enemy_id": enemy.identifier, "reward": definition.reward},
++                    )
++                )
++            else:
++                survivors.append(enemy)
++        self._enemies = survivors
++        return events
++
++    def views(self) -> tuple[EnemyView, ...]:
++        result: list[EnemyView] = []
++        for enemy in self._enemies:
++            definition = ENEMY_DEFINITIONS[enemy.kind]
++            result.append(
++                EnemyView(
++                    identifier=enemy.identifier,
++                    kind=enemy.kind,
++                    position=enemy.position,
++                    health=enemy.health,
++                    max_health=definition.max_health,
++                    speed=definition.speed,
++                    reward=definition.reward,
++                    base_damage=definition.base_damage,
++                )
++            )
++        return tuple(result)
++
++    def is_wave_active(self) -> bool:
++        return self._active_wave is not None
++
++    def draw(self, surface) -> None:
++        import pygame
++
++        for enemy in self._enemies:
++            definition = ENEMY_DEFINITIONS[enemy.kind]
++            frame_index = int(enemy.animation_time * 8)
++            image = load_sprite_frame(
++                ENEMY_WALK_SHEETS[enemy.kind],
++                frame_index=frame_index,
++                frame_size=(48, 48),
++                target_size=(38, 38),
++            )
++            center = (int(enemy.position.x), int(enemy.position.y))
++            if image is not None:
++                surface.blit(image, image.get_rect(center=center))
++            else:
++                pygame.draw.circle(surface, (155, 58, 84), center, 15)
++
++            ratio = max(0.0, min(1.0, enemy.health / definition.max_health))
++            bar = pygame.Rect(center[0] - 19, center[1] - 29, 38, 5)
++            pygame.draw.rect(surface, (74, 30, 34), bar)
++            pygame.draw.rect(surface, (78, 175, 77), (bar.x, bar.y, int(bar.width * ratio), bar.height))
++
++    def _spawn(self, kind: EnemyKind) -> None:
++        definition = ENEMY_DEFINITIONS[kind]
++        self._enemies.append(
++            _EnemyRuntime(
++                identifier=f"enemy-{self._next_id}",
++                kind=kind,
++                position=self._route[0],
++                path=self._route,
++                path_index=1,
++                health=definition.max_health,
++            )
++        )
++        self._next_id += 1
++
++    @staticmethod
++    def _move(enemy: _EnemyRuntime, delta_time: float) -> bool:
++        definition = ENEMY_DEFINITIONS[enemy.kind]
++        distance_left = definition.speed * delta_time
++        while distance_left > 0 and enemy.path_index < len(enemy.path):
++            target = enemy.path[enemy.path_index]
++            segment_distance = enemy.position.distance_to(target)
++            if distance_left >= segment_distance:
++                enemy.position = target
++                enemy.path_index += 1
++                distance_left -= segment_distance
++            else:
++                enemy.position = enemy.position.move_towards(target, distance_left)
++                distance_left = 0
++        return enemy.path_index >= len(enemy.path)
+diff --git a/enemies/sandbox.py b/enemies/sandbox.py
+new file mode 100644
+index 0000000..cf0a551
+--- /dev/null
++++ b/enemies/sandbox.py
+@@ -0,0 +1,34 @@
++import pygame
++
++from core.map_model import GameMap
++from core.map_renderer import MapRenderer
++from enemies.api import EnemySystem
++
++
++def main() -> None:
++    pygame.init()
++    game_map = GameMap.create_default()
++    screen = pygame.display.set_mode((game_map.pixel_width, game_map.pixel_height))
++    pygame.display.set_caption("Enemies sandbox")
++    clock = pygame.time.Clock()
++    renderer = MapRenderer()
++    enemies = EnemySystem()
++    enemies.start_wave(1, game_map.build_route())
++    running = True
++
++    while running:
++        for event in pygame.event.get():
++            if event.type == pygame.QUIT:
++                running = False
++        enemies.update(clock.get_time() / 1000.0)
++        screen.fill((25, 35, 25))
++        renderer.draw(screen, game_map)
++        enemies.draw(screen)
++        pygame.display.flip()
++        clock.tick(60)
++
++    pygame.quit()
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/integration/__init__.py b/integration/__init__.py
+new file mode 100644
+index 0000000..bad1263
+--- /dev/null
++++ b/integration/__init__.py
+@@ -0,0 +1,3 @@
++from integration.app import TowerDefenseApp, run
++
++__all__ = ["TowerDefenseApp", "run"]
+diff --git a/integration/app.py b/integration/app.py
+new file mode 100644
+index 0000000..c4cdea0
+--- /dev/null
++++ b/integration/app.py
+@@ -0,0 +1,131 @@
++from __future__ import annotations
++
++import pygame
++
++from core.game_shell import CoreWorld
++from core.map_renderer import MapRenderer
++from enemies.api import EnemySystem, WAVE_PLANS
++from shared.contracts import GameEventKind, GameSnapshot, TowerKind, UiActionKind, Vector2
++from towers.api import TowerSystem
++from ui.api import PANEL_WIDTH, UiSystem
++from ui.economy import Economy
++
++MAX_WAVES = max(WAVE_PLANS)
++
++
++class TowerDefenseApp:
++    def __init__(self) -> None:
++        pygame.init()
++        self.core = CoreWorld()
++        self.map = self.core.game_map
++        self.screen = pygame.display.set_mode((self.map.pixel_width + PANEL_WIDTH, self.map.pixel_height))
++        pygame.display.set_caption("Tower Defense — Team Scaffold")
++        self.clock = pygame.time.Clock()
++        self.renderer = MapRenderer()
++        self.towers = TowerSystem()
++        self.enemies = EnemySystem()
++        self.economy = Economy()
++        self.ui = UiSystem(self.map.pixel_width, self.map.pixel_height)
++        self.wave_number = 1
++        self.victory = False
++        self.running = True
++
++    def run(self) -> None:
++        while self.running:
++            delta_time = self.clock.tick(60) / 1000.0
++            self._handle_events()
++            self._update(delta_time)
++            self._draw()
++        pygame.quit()
++
++    def _handle_events(self) -> None:
++        for event in pygame.event.get():
++            if event.type == pygame.QUIT:
++                self.running = False
++                continue
++
++            action = self.ui.handle_event(event)
++            if action is not None:
++                self._handle_ui_action(action.kind, action.payload or {})
++                continue
++
++            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
++                self._try_build(Vector2(float(event.pos[0]), float(event.pos[1])))
++
++    def _handle_ui_action(self, action_kind: UiActionKind, payload: dict) -> None:
++        if action_kind == UiActionKind.SELECT_TOWER:
++            tower_kind = payload.get("tower_kind")
++            if isinstance(tower_kind, TowerKind):
++                self.economy.select_tower(tower_kind)
++        elif action_kind == UiActionKind.START_WAVE:
++            if not self.enemies.is_wave_active() and not self.victory:
++                self.enemies.start_wave(self.wave_number, self.core.route())
++
++    def _try_build(self, position: Vector2) -> None:
++        if position.x >= self.map.pixel_width or self.economy.is_game_over() or self.victory:
++            return
++        tower_kind = self.economy.state.selected_tower
++        if tower_kind is None or not self.economy.can_buy(tower_kind):
++            return
++        cell = self.map.world_to_cell(position)
++        request = self.core.create_build_request(cell, tower_kind)
++        if request is None:
++            return
++        if not self.core.confirm_build(cell):
++            return
++        if not self.economy.buy(tower_kind):
++            self.core.cancel_build(cell)
++            return
++        self.towers.build(request)
++
++    def _update(self, delta_time: float) -> None:
++        if self.economy.is_game_over() or self.victory:
++            return
++
++        damage_commands = self.towers.update(delta_time, self.enemies.views())
++        events = self.enemies.apply_damage(damage_commands)
++        events.extend(self.enemies.update(delta_time))
++
++        for event in events:
++            if event.kind == GameEventKind.ENEMY_DEFEATED:
++                self.economy.add_reward(int(event.payload["reward"]))
++            elif event.kind == GameEventKind.ENEMY_REACHED_GOAL:
++                self.economy.take_base_damage(int(event.payload["damage"]))
++            elif event.kind == GameEventKind.WAVE_COMPLETED:
++                if self.wave_number >= MAX_WAVES:
++                    self.victory = True
++                else:
++                    self.wave_number += 1
++
++    def _draw(self) -> None:
++        self.screen.fill((20, 30, 25))
++        self.renderer.draw(self.screen, self.map)
++        self.enemies.draw(self.screen)
++        self.towers.draw(self.screen)
++        snapshot = GameSnapshot(
++            player=self.economy.state.to_view(),
++            wave_number=self.wave_number,
++            enemies=self.enemies.views(),
++            towers=self.towers.views(),
++            wave_is_active=self.enemies.is_wave_active(),
++            game_over=self.economy.is_game_over(),
++            victory=self.victory,
++        )
++        self.ui.draw(self.screen, snapshot)
++        self._draw_end_state(snapshot)
++        pygame.display.flip()
++
++    def _draw_end_state(self, snapshot: GameSnapshot) -> None:
++        message = "ПОБЕДА" if snapshot.victory else "ИГРА ОКОНЧЕНА" if snapshot.game_over else None
++        if message is None:
++            return
++        overlay = pygame.Surface(self.screen.get_size(), pygame.SRCALPHA)
++        overlay.fill((0, 0, 0, 150))
++        self.screen.blit(overlay, (0, 0))
++        font = pygame.font.Font(None, 74)
++        text = font.render(message, True, (248, 236, 174))
++        self.screen.blit(text, text.get_rect(center=self.screen.get_rect().center))
++
++
++def run() -> None:
++    TowerDefenseApp().run()
+diff --git a/requirements-dev.txt b/requirements-dev.txt
+new file mode 100644
+index 0000000..8b60011
+--- /dev/null
++++ b/requirements-dev.txt
+@@ -0,0 +1,2 @@
++-r requirements.txt
++pytest>=8.0,<10.0
+diff --git a/requirements.txt b/requirements.txt
+new file mode 100644
+index 0000000..21a1eb1
+--- /dev/null
++++ b/requirements.txt
+@@ -0,0 +1 @@
++pygame>=2.5,<3.0
+diff --git a/shared/__init__.py b/shared/__init__.py
+new file mode 100644
+index 0000000..08f1089
+--- /dev/null
++++ b/shared/__init__.py
+@@ -0,0 +1,35 @@
++from shared.contracts import (
++    BuildRequest,
++    DamageCommand,
++    EnemyKind,
++    EnemyView,
++    GameEvent,
++    GameEventKind,
++    GameSnapshot,
++    PlayerState,
++    PlayerView,
++    TileKind,
++    TowerKind,
++    TowerView,
++    UiAction,
++    UiActionKind,
++    Vector2,
++)
++
++__all__ = [
++    "BuildRequest",
++    "DamageCommand",
++    "EnemyKind",
++    "EnemyView",
++    "GameEvent",
++    "GameEventKind",
++    "GameSnapshot",
++    "PlayerState",
++    "PlayerView",
++    "TileKind",
++    "TowerKind",
++    "TowerView",
++    "UiAction",
++    "UiActionKind",
++    "Vector2",
++]
+diff --git a/shared/asset_manifest.py b/shared/asset_manifest.py
+new file mode 100644
+index 0000000..be6dfec
+--- /dev/null
++++ b/shared/asset_manifest.py
+@@ -0,0 +1,40 @@
++from __future__ import annotations
++
++from pathlib import Path
++
++from shared.contracts import EnemyKind, TowerKind
++
++PROJECT_ROOT = Path(__file__).resolve().parents[1]
++ASSET_ROOT = PROJECT_ROOT / "assets"
++
++
++def asset_path(*parts: str) -> Path:
++    return ASSET_ROOT.joinpath(*parts)
++
++
++TILE_ASSETS = {
++    "grass": asset_path("tiles", "fields", "FieldsTile_39.png"),
++    "road": asset_path("tiles", "fields", "FieldsTile_01.png"),
++    "build_slot": asset_path("tiles", "objects", "place_for_tower_2.png"),
++}
++
++TOWER_IDLE_ASSETS = {
++    TowerKind.ARCHER_1: asset_path("towers", "idle", "archer_1.png"),
++    TowerKind.ARCHER_2: asset_path("towers", "idle", "archer_3.png"),
++    TowerKind.ARCHER_3: asset_path("towers", "idle", "archer_5.png"),
++}
++
++TOWER_UNIT_SHEETS = {
++    TowerKind.ARCHER_1: asset_path("towers", "units", "archer_1", "down_idle.png"),
++    TowerKind.ARCHER_2: asset_path("towers", "units", "archer_2", "down_idle.png"),
++    TowerKind.ARCHER_3: asset_path("towers", "units", "archer_3", "down_idle.png"),
++}
++
++ENEMY_WALK_SHEETS = {
++    EnemyKind.ENEMY_1: asset_path("enemies", "enemy_1", "down_walk.png"),
++    EnemyKind.ENEMY_2: asset_path("enemies", "enemy_2", "down_walk.png"),
++    EnemyKind.ENEMY_3: asset_path("enemies", "enemy_3", "down_walk.png"),
++    EnemyKind.ENEMY_4: asset_path("enemies", "enemy_4", "down_walk.png"),
++}
++
++ARROW_SHEET = asset_path("projectiles", "arrows", "arrow_1.png")
+diff --git a/shared/assets.py b/shared/assets.py
+new file mode 100644
+index 0000000..ea59638
+--- /dev/null
++++ b/shared/assets.py
+@@ -0,0 +1,54 @@
++from __future__ import annotations
++
++from pathlib import Path
++from typing import Any
++
++_IMAGE_CACHE: dict[tuple[Path, tuple[int, int] | None], Any] = {}
++
++
++def load_image(path: Path, size: tuple[int, int] | None = None) -> Any | None:
++    key = (path, size)
++    if key in _IMAGE_CACHE:
++        return _IMAGE_CACHE[key]
++    if not path.exists():
++        return None
++
++    import pygame
++
++    try:
++        image = pygame.image.load(str(path)).convert_alpha()
++    except pygame.error:
++        return None
++
++    if size is not None and image.get_size() != size:
++        image = pygame.transform.scale(image, size)
++    _IMAGE_CACHE[key] = image
++    return image
++
++
++def load_sprite_frame(
++    path: Path,
++    frame_index: int,
++    frame_size: tuple[int, int],
++    target_size: tuple[int, int] | None = None,
++) -> Any | None:
++    sheet = load_image(path)
++    if sheet is None:
++        return None
++
++    import pygame
++
++    frame_width, frame_height = frame_size
++    columns = max(1, sheet.get_width() // frame_width)
++    index = frame_index % columns
++    rect = pygame.Rect(index * frame_width, 0, frame_width, frame_height)
++    if not sheet.get_rect().contains(rect):
++        return None
++    frame = sheet.subsurface(rect).copy()
++    if target_size is not None and frame.get_size() != target_size:
++        frame = pygame.transform.scale(frame, target_size)
++    return frame
++
++
++def clear_cache() -> None:
++    _IMAGE_CACHE.clear()
+diff --git a/shared/contracts.py b/shared/contracts.py
+new file mode 100644
+index 0000000..8d1438f
+--- /dev/null
++++ b/shared/contracts.py
+@@ -0,0 +1,245 @@
++from __future__ import annotations
++
++from dataclasses import dataclass
++from enum import Enum, IntEnum
++from math import hypot
++from typing import Any, TypeAlias
++
++GridCell: TypeAlias = tuple[int, int]
++
++
++class TileKind(IntEnum):
++    ROAD = 0
++    BUILD_SLOT = 1
++    GRASS = 2
++    BLOCKED = 3
++    GOAL = 4
++    SPAWN = 5
++
++
++class TowerKind(str, Enum):
++    ARCHER_1 = "archer_1"
++    ARCHER_2 = "archer_2"
++    ARCHER_3 = "archer_3"
++
++
++class EnemyKind(str, Enum):
++    ENEMY_1 = "enemy_1"
++    ENEMY_2 = "enemy_2"
++    ENEMY_3 = "enemy_3"
++    ENEMY_4 = "enemy_4"
++
++
++class UiActionKind(str, Enum):
++    SELECT_TOWER = "select_tower"
++    START_WAVE = "start_wave"
++
++
++class GameEventKind(str, Enum):
++    ENEMY_DEFEATED = "enemy_defeated"
++    ENEMY_REACHED_GOAL = "enemy_reached_goal"
++    WAVE_COMPLETED = "wave_completed"
++
++
++@dataclass(frozen=True, slots=True)
++class Vector2:
++    x: float
++    y: float
++
++    def distance_to(self, other: "Vector2") -> float:
++        return hypot(self.x - other.x, self.y - other.y)
++
++    def move_towards(self, target: "Vector2", distance: float) -> "Vector2":
++        total = self.distance_to(target)
++        if total == 0 or distance >= total:
++            return target
++        ratio = distance / total
++        return Vector2(
++            self.x + (target.x - self.x) * ratio,
++            self.y + (target.y - self.y) * ratio,
++        )
++
++
++@dataclass(frozen=True, slots=True)
++class TowerDefinition:
++    kind: TowerKind
++    title: str
++    cost: int
++    damage: int
++    attack_range: float
++    attacks_per_second: float
++    asset_key: str
++
++
++TOWER_DEFINITIONS: dict[TowerKind, TowerDefinition] = {
++    TowerKind.ARCHER_1: TowerDefinition(
++        kind=TowerKind.ARCHER_1,
++        title="Лучник I",
++        cost=40,
++        damage=12,
++        attack_range=135.0,
++        attacks_per_second=1.1,
++        asset_key="archer_1",
++    ),
++    TowerKind.ARCHER_2: TowerDefinition(
++        kind=TowerKind.ARCHER_2,
++        title="Лучник II",
++        cost=70,
++        damage=22,
++        attack_range=165.0,
++        attacks_per_second=0.9,
++        asset_key="archer_2",
++    ),
++    TowerKind.ARCHER_3: TowerDefinition(
++        kind=TowerKind.ARCHER_3,
++        title="Лучник III",
++        cost=110,
++        damage=34,
++        attack_range=195.0,
++        attacks_per_second=0.75,
++        asset_key="archer_3",
++    ),
++}
++
++
++@dataclass(frozen=True, slots=True)
++class EnemyDefinition:
++    kind: EnemyKind
++    title: str
++    max_health: int
++    speed: float
++    reward: int
++    base_damage: int
++    asset_key: str
++
++
++ENEMY_DEFINITIONS: dict[EnemyKind, EnemyDefinition] = {
++    EnemyKind.ENEMY_1: EnemyDefinition(
++        kind=EnemyKind.ENEMY_1,
++        title="Враг 1",
++        max_health=40,
++        speed=52.0,
++        reward=10,
++        base_damage=1,
++        asset_key="enemy_1",
++    ),
++    EnemyKind.ENEMY_2: EnemyDefinition(
++        kind=EnemyKind.ENEMY_2,
++        title="Враг 2",
++        max_health=85,
++        speed=42.0,
++        reward=18,
++        base_damage=2,
++        asset_key="enemy_2",
++    ),
++    EnemyKind.ENEMY_3: EnemyDefinition(
++        kind=EnemyKind.ENEMY_3,
++        title="Враг 3",
++        max_health=145,
++        speed=33.0,
++        reward=30,
++        base_damage=3,
++        asset_key="enemy_3",
++    ),
++    EnemyKind.ENEMY_4: EnemyDefinition(
++        kind=EnemyKind.ENEMY_4,
++        title="Враг 4",
++        max_health=300,
++        speed=25.0,
++        reward=70,
++        base_damage=5,
++        asset_key="enemy_4",
++    ),
++}
++
++
++@dataclass(frozen=True, slots=True)
++class BuildRequest:
++    tower_kind: TowerKind
++    cell: GridCell
++    position: Vector2
++
++
++@dataclass(frozen=True, slots=True)
++class DamageCommand:
++    target_id: str
++    amount: int
++    source_id: str
++
++
++@dataclass(frozen=True, slots=True)
++class UiAction:
++    kind: UiActionKind
++    payload: dict[str, Any] | None = None
++
++
++@dataclass(frozen=True, slots=True)
++class GameEvent:
++    kind: GameEventKind
++    payload: dict[str, Any]
++
++
++@dataclass(slots=True)
++class EnemyView:
++    identifier: str
++    kind: EnemyKind
++    position: Vector2
++    health: int
++    max_health: int
++    speed: float
++    reward: int
++    base_damage: int
++
++    @property
++    def is_alive(self) -> bool:
++        return self.health > 0
++
++    @property
++    def health_ratio(self) -> float:
++        if self.max_health <= 0:
++            return 0.0
++        return max(0.0, min(1.0, self.health / self.max_health))
++
++
++@dataclass(slots=True)
++class TowerView:
++    identifier: str
++    kind: TowerKind
++    position: Vector2
++    cell: GridCell
++    cooldown_remaining: float
++
++
++@dataclass(frozen=True, slots=True)
++class PlayerView:
++    money: int
++    lives: int
++    score: int
++    selected_tower: TowerKind | None
++
++
++@dataclass(slots=True)
++class PlayerState:
++    money: int = 120
++    lives: int = 20
++    score: int = 0
++    selected_tower: TowerKind | None = TowerKind.ARCHER_1
++
++    def to_view(self) -> PlayerView:
++        return PlayerView(
++            money=self.money,
++            lives=self.lives,
++            score=self.score,
++            selected_tower=self.selected_tower,
++        )
++
++
++@dataclass(frozen=True, slots=True)
++class GameSnapshot:
++    player: PlayerView
++    wave_number: int
++    enemies: tuple[EnemyView, ...]
++    towers: tuple[TowerView, ...]
++    wave_is_active: bool
++    game_over: bool
++    victory: bool
+diff --git a/team_launcher.py b/team_launcher.py
+new file mode 100644
+index 0000000..68c1881
+--- /dev/null
++++ b/team_launcher.py
+@@ -0,0 +1,5 @@
++from integration.app import run
++
++
++if __name__ == "__main__":
++    run()
+diff --git a/tests/test_contracts.py b/tests/test_contracts.py
+new file mode 100644
+index 0000000..1498f60
+--- /dev/null
++++ b/tests/test_contracts.py
+@@ -0,0 +1,45 @@
++from core.map_model import GameMap
++from enemies.api import EnemySystem
++from shared.contracts import BuildRequest, DamageCommand, EnemyKind, GameEventKind, TowerKind, Vector2
++from towers.api import TowerSystem
++from ui.economy import Economy
++
++
++def test_default_map_has_route() -> None:
++    game_map = GameMap.create_default()
++    route = game_map.build_route()
++    assert len(route) > 2
++
++
++def test_build_slot_can_only_be_occupied_once() -> None:
++    game_map = GameMap.create_default()
++    cell = (3, 5)
++    assert game_map.occupy(cell)
++    assert not game_map.occupy(cell)
++
++
++def test_tower_emits_damage_command_for_enemy_in_range() -> None:
++    towers = TowerSystem()
++    towers.build(BuildRequest(TowerKind.ARCHER_1, (0, 0), Vector2(100, 100)))
++    from shared.contracts import EnemyView
++
++    enemy = EnemyView("enemy-x", EnemyKind.ENEMY_1, Vector2(120, 100), 40, 40, 0, 10, 1)
++    commands = towers.update(1.0, (enemy,))
++    assert commands
++    assert commands[0].target_id == "enemy-x"
++
++
++def test_enemy_system_marks_enemy_as_defeated() -> None:
++    game_map = GameMap.create_default()
++    enemies = EnemySystem()
++    enemies.start_wave(1, game_map.build_route())
++    enemies.update(0.1)
++    enemy = enemies.views()[0]
++    events = enemies.apply_damage([DamageCommand(enemy.identifier, 1000, "test")])
++    assert events[0].kind == GameEventKind.ENEMY_DEFEATED
++
++
++def test_economy_does_not_allow_negative_purchase() -> None:
++    economy = Economy()
++    economy.state.money = 0
++    assert not economy.buy(TowerKind.ARCHER_1)
+diff --git a/tools/import_assets.py b/tools/import_assets.py
+new file mode 100644
+index 0000000..40fe925
+--- /dev/null
++++ b/tools/import_assets.py
+@@ -0,0 +1,117 @@
++from __future__ import annotations
++
++import argparse
++import re
++import shutil
++from pathlib import Path
++from zipfile import ZipFile
++
++PROJECT_ROOT = Path(__file__).resolve().parents[1]
++ASSET_ROOT = PROJECT_ROOT / "assets"
++DIRECTION_NAMES = {"D": "down", "S": "side", "U": "up"}
++
++
++def _write_from_zip(archive: ZipFile, member: str, target: Path, overwrite: bool) -> bool:
++    target.parent.mkdir(parents=True, exist_ok=True)
++    if target.exists() and not overwrite:
++        return False
++    with archive.open(member) as source, target.open("wb") as destination:
++        shutil.copyfileobj(source, destination)
++    return True
++
++
++def _copy_license(archive: ZipFile, label: str, overwrite: bool) -> int:
++    copied = 0
++    for member in archive.namelist():
++        if member.startswith("__MACOSX/") or not member.endswith("License.txt"):
++            continue
++        target = ASSET_ROOT / "licenses" / f"{label}_LICENSE.txt"
++        copied += int(_write_from_zip(archive, member, target, overwrite))
++        break
++    return copied
++
++
++def import_tiles(zip_path: Path, overwrite: bool) -> int:
++    copied = 0
++    with ZipFile(zip_path) as archive:
++        for member in archive.namelist():
++            if member.startswith("__MACOSX/"):
++                continue
++            name = Path(member).name
++            if "/1 Tiles/" in member and name.startswith("FieldsTile") and name.endswith(".png"):
++                copied += int(_write_from_zip(archive, member, ASSET_ROOT / "tiles" / "fields" / name, overwrite))
++            elif member.endswith("/2 Objects/PlaceForTower1.png"):
++                copied += int(_write_from_zip(archive, member, ASSET_ROOT / "tiles" / "objects" / "place_for_tower_1.png", overwrite))
++            elif member.endswith("/2 Objects/PlaceForTower2.png"):
++                copied += int(_write_from_zip(archive, member, ASSET_ROOT / "tiles" / "objects" / "place_for_tower_2.png", overwrite))
++        copied += _copy_license(archive, "fields_tileset", overwrite)
++    return copied
++
++
++def import_enemies(zip_path: Path, overwrite: bool) -> int:
++    copied = 0
++    pattern = re.compile(r"^(?P<enemy>\d+)/(?P<direction>[DSU])_(?P<animation>[A-Za-z0-9]+)\.png$")
++    with ZipFile(zip_path) as archive:
++        for member in archive.namelist():
++            match = pattern.match(member)
++            if match is None:
++                continue
++            target = ASSET_ROOT / "enemies" / f"enemy_{match['enemy']}" / f"{DIRECTION_NAMES[match['direction']]}_{match['animation'].lower()}.png"
++            copied += int(_write_from_zip(archive, member, target, overwrite))
++        copied += _copy_license(archive, "field_enemies", overwrite)
++    return copied
++
++
++def import_towers(zip_path: Path, overwrite: bool) -> int:
++    copied = 0
++    idle_pattern = re.compile(r"^2 Idle/(?P<level>\d+)\.png$")
++    upgrade_pattern = re.compile(r"^1 Upgrade/(?P<level>\d+)\.png$")
++    unit_pattern = re.compile(r"^3 Units/(?P<unit>\d+)/(?P<direction>[DSU])_(?P<animation>[A-Za-z0-9]+)\.png$")
++    arrow_pattern = re.compile(r"^3 Units/Arrow/(?P<frame>\d+)\.png$")
++
++    with ZipFile(zip_path) as archive:
++        for member in archive.namelist():
++            match = idle_pattern.match(member)
++            if match:
++                target = ASSET_ROOT / "towers" / "idle" / f"archer_{match['level']}.png"
++                copied += int(_write_from_zip(archive, member, target, overwrite))
++                continue
++            match = upgrade_pattern.match(member)
++            if match:
++                target = ASSET_ROOT / "towers" / "upgrade" / f"archer_{match['level']}.png"
++                copied += int(_write_from_zip(archive, member, target, overwrite))
++                continue
++            match = unit_pattern.match(member)
++            if match:
++                target = ASSET_ROOT / "towers" / "units" / f"archer_{match['unit']}" / f"{DIRECTION_NAMES[match['direction']]}_{match['animation'].lower()}.png"
++                copied += int(_write_from_zip(archive, member, target, overwrite))
++                continue
++            match = arrow_pattern.match(member)
++            if match:
++                target = ASSET_ROOT / "projectiles" / "arrows" / f"arrow_{match['frame']}.png"
++                copied += int(_write_from_zip(archive, member, target, overwrite))
++        copied += _copy_license(archive, "archer_towers", overwrite)
++    return copied
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser(description="Imports the selected CraftPix assets into the project asset tree.")
++    parser.add_argument("--tiles", type=Path, required=True)
++    parser.add_argument("--enemies", type=Path, required=True)
++    parser.add_argument("--towers", type=Path, required=True)
++    parser.add_argument("--overwrite", action="store_true")
++    args = parser.parse_args()
++
++    for path in (args.tiles, args.enemies, args.towers):
++        if not path.is_file():
++            parser.error(f"Archive not found: {path}")
++
++    total = 0
++    total += import_tiles(args.tiles, args.overwrite)
++    total += import_enemies(args.enemies, args.overwrite)
++    total += import_towers(args.towers, args.overwrite)
++    print(f"Imported {total} file(s) into {ASSET_ROOT}")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/towers/README.md b/towers/README.md
+new file mode 100644
+index 0000000..4d8878a
+--- /dev/null
++++ b/towers/README.md
+@@ -0,0 +1,15 @@
++# Разработчик 2 — towers
++
++Можно менять только `towers/`, `assets/towers/` и `assets/projectiles/`.
++
++Башни не импортируют `enemies/`. На вход в `TowerSystem.update` приходит только `tuple[EnemyView, ...]`, а результатом является `list[DamageCommand]`.
++
++Текущий код уже умеет поставить башню и выдавать команды урона. Дальше можно добавлять:
++
++- анимации idle/attack;
++- снаряды;
++- новую цель или приоритет цели;
++- новые классы башен;
++- улучшения.
++
++Проверка: `python -m towers.sandbox`.
+diff --git a/towers/__init__.py b/towers/__init__.py
+new file mode 100644
+index 0000000..d448633
+--- /dev/null
++++ b/towers/__init__.py
+@@ -0,0 +1,3 @@
++from towers.api import TowerSystem
++
++__all__ = ["TowerSystem"]
+diff --git a/towers/api.py b/towers/api.py
+new file mode 100644
+index 0000000..51fb281
+--- /dev/null
++++ b/towers/api.py
+@@ -0,0 +1,98 @@
++from __future__ import annotations
++
++from dataclasses import dataclass
++
++from shared.asset_manifest import TOWER_IDLE_ASSETS
++from shared.assets import load_image
++from shared.contracts import (
++    BuildRequest,
++    DamageCommand,
++    EnemyView,
++    TOWER_DEFINITIONS,
++    TowerKind,
++    TowerView,
++)
++
++
++@dataclass(slots=True)
++class _TowerRuntime:
++    identifier: str
++    request: BuildRequest
++    cooldown_remaining: float = 0.0
++
++
++class TowerSystem:
++    def __init__(self) -> None:
++        self._towers: list[_TowerRuntime] = []
++        self._next_id = 1
++
++    def build(self, request: BuildRequest) -> TowerView:
++        tower = _TowerRuntime(identifier=f"tower-{self._next_id}", request=request)
++        self._next_id += 1
++        self._towers.append(tower)
++        return self._to_view(tower)
++
++    def update(self, delta_time: float, enemies: tuple[EnemyView, ...]) -> list[DamageCommand]:
++        commands: list[DamageCommand] = []
++        for tower in self._towers:
++            tower.cooldown_remaining = max(0.0, tower.cooldown_remaining - delta_time)
++            if tower.cooldown_remaining > 0:
++                continue
++
++            definition = TOWER_DEFINITIONS[tower.request.tower_kind]
++            target = self._find_target(tower, enemies, definition.attack_range)
++            if target is None:
++                continue
++
++            tower.cooldown_remaining = 1.0 / definition.attacks_per_second
++            commands.append(
++                DamageCommand(
++                    target_id=target.identifier,
++                    amount=definition.damage,
++                    source_id=tower.identifier,
++                )
++            )
++        return commands
++
++    def views(self) -> tuple[TowerView, ...]:
++        return tuple(self._to_view(tower) for tower in self._towers)
++
++    def draw(self, surface) -> None:
++        import pygame
++
++        for tower in self._towers:
++            definition = TOWER_DEFINITIONS[tower.request.tower_kind]
++            image = load_image(TOWER_IDLE_ASSETS[tower.request.tower_kind], (58, 96))
++            x = int(tower.request.position.x)
++            y = int(tower.request.position.y)
++            if image is not None:
++                rect = image.get_rect(midbottom=(x, y + 24))
++                surface.blit(image, rect)
++            else:
++                pygame.draw.circle(surface, (93, 83, 59), (x, y), 19)
++                pygame.draw.circle(surface, (239, 212, 128), (x, y), 15, 2)
++
++    def _find_target(
++        self,
++        tower: _TowerRuntime,
++        enemies: tuple[EnemyView, ...],
++        attack_range: float,
++    ) -> EnemyView | None:
++        valid = [
++            enemy
++            for enemy in enemies
++            if enemy.is_alive and tower.request.position.distance_to(enemy.position) <= attack_range
++        ]
++        if not valid:
++            return None
++        return min(valid, key=lambda enemy: tower.request.position.distance_to(enemy.position))
++
++    @staticmethod
++    def _to_view(tower: _TowerRuntime) -> TowerView:
++        return TowerView(
++            identifier=tower.identifier,
++            kind=tower.request.tower_kind,
++            position=tower.request.position,
++            cell=tower.request.cell,
++            cooldown_remaining=tower.cooldown_remaining,
++        )
+diff --git a/towers/sandbox.py b/towers/sandbox.py
+new file mode 100644
+index 0000000..7dfc283
+--- /dev/null
++++ b/towers/sandbox.py
+@@ -0,0 +1,33 @@
++import pygame
++
++from shared.contracts import BuildRequest, EnemyKind, EnemyView, TowerKind, Vector2
++from towers.api import TowerSystem
++
++
++def main() -> None:
++    pygame.init()
++    screen = pygame.display.set_mode((640, 420))
++    pygame.display.set_caption("Towers sandbox")
++    clock = pygame.time.Clock()
++    towers = TowerSystem()
++    towers.build(BuildRequest(TowerKind.ARCHER_1, (3, 3), Vector2(180, 230)))
++    enemy = EnemyView("demo-enemy", EnemyKind.ENEMY_1, Vector2(430, 230), 200, 200, 0, 0, 0)
++    running = True
++
++    while running:
++        for event in pygame.event.get():
++            if event.type == pygame.QUIT:
++                running = False
++
++        towers.update(clock.get_time() / 1000.0, (enemy,))
++        screen.fill((65, 104, 61))
++        towers.draw(screen)
++        pygame.draw.circle(screen, (190, 64, 80), (int(enemy.position.x), int(enemy.position.y)), 17)
++        pygame.display.flip()
++        clock.tick(60)
++
++    pygame.quit()
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/ui/README.md b/ui/README.md
+new file mode 100644
+index 0000000..00d3604
+--- /dev/null
++++ b/ui/README.md
+@@ -0,0 +1,9 @@
++# Разработчик 4 — ui
++
++Можно менять только `ui/` и `assets/ui/`.
++
++UI не импортирует `core/`, `towers/` или `enemies/`. Он принимает `GameSnapshot` на отрисовку и возвращает `UiAction` из обработчика клика.
++
++Экономика находится в `ui/economy.py`. Дальше можно добавлять меню, подсказки, паузу, окно победы и оформление.
++
++Проверка: `python -m ui.sandbox`.
+diff --git a/ui/__init__.py b/ui/__init__.py
+new file mode 100644
+index 0000000..876c561
+--- /dev/null
++++ b/ui/__init__.py
+@@ -0,0 +1,11 @@
++from ui.economy import Economy
++
++__all__ = ["Economy", "UiSystem"]
++
++
++def __getattr__(name: str):
++    if name == "UiSystem":
++        from ui.api import UiSystem
++
++        return UiSystem
++    raise AttributeError(name)
+diff --git a/ui/api.py b/ui/api.py
+new file mode 100644
+index 0000000..5261814
+--- /dev/null
++++ b/ui/api.py
+@@ -0,0 +1,100 @@
++from __future__ import annotations
++
++from dataclasses import dataclass
++
++import pygame
++
++from shared.contracts import (
++    GameSnapshot,
++    TOWER_DEFINITIONS,
++    TowerKind,
++    UiAction,
++    UiActionKind,
++)
++
++PANEL_WIDTH = 270
++
++
++@dataclass(frozen=True, slots=True)
++class _Button:
++    label: str
++    rect: pygame.Rect
++    action: UiAction
++
++
++class UiSystem:
++    def __init__(self, map_width: int, height: int) -> None:
++        self._map_width = map_width
++        self._height = height
++        self._font = pygame.font.Font(None, 27)
++        self._title_font = pygame.font.Font(None, 34)
++        self._buttons = self._build_buttons()
++
++    def handle_event(self, event: pygame.event.Event) -> UiAction | None:
++        if event.type != pygame.MOUSEBUTTONDOWN or event.button != 1:
++            return None
++        for button in self._buttons:
++            if button.rect.collidepoint(event.pos):
++                return button.action
++        return None
++
++    def draw(self, surface: pygame.Surface, snapshot: GameSnapshot) -> None:
++        panel = pygame.Rect(self._map_width, 0, PANEL_WIDTH, self._height)
++        pygame.draw.rect(surface, (31, 40, 48), panel)
++        pygame.draw.line(surface, (85, 103, 117), (self._map_width, 0), (self._map_width, self._height), 2)
++
++        self._draw_text(surface, "Tower Defense", self._map_width + 20, 18, self._title_font, (243, 239, 212))
++        self._draw_text(surface, f"Деньги: {snapshot.player.money}", self._map_width + 20, 66)
++        self._draw_text(surface, f"Жизни: {snapshot.player.lives}", self._map_width + 20, 94)
++        self._draw_text(surface, f"Волна: {snapshot.wave_number}", self._map_width + 20, 122)
++        self._draw_text(surface, f"Счёт: {snapshot.player.score}", self._map_width + 20, 150)
++        self._draw_text(surface, "Выбор башни", self._map_width + 20, 196, self._title_font, (189, 214, 176))
++
++        for button in self._buttons:
++            is_selected = (
++                button.action.kind == UiActionKind.SELECT_TOWER
++                and button.action.payload is not None
++                and button.action.payload.get("tower_kind") == snapshot.player.selected_tower
++            )
++            color = (105, 144, 95) if is_selected else (67, 89, 104)
++            pygame.draw.rect(surface, color, button.rect, border_radius=7)
++            pygame.draw.rect(surface, (196, 213, 220), button.rect, 2, border_radius=7)
++            label = self._font.render(button.label, True, (245, 246, 240))
++            surface.blit(label, label.get_rect(center=button.rect.center))
++
++        status = "Волна идёт" if snapshot.wave_is_active else "Нажми «Старт волны»"
++        self._draw_text(surface, status, self._map_width + 20, self._height - 90, color=(232, 202, 124))
++
++    def _build_buttons(self) -> list[_Button]:
++        buttons: list[_Button] = []
++        y = 240
++        for tower_kind in TowerKind:
++            definition = TOWER_DEFINITIONS[tower_kind]
++            buttons.append(
++                _Button(
++                    label=f"{definition.title} — {definition.cost}",
++                    rect=pygame.Rect(self._map_width + 18, y, PANEL_WIDTH - 36, 42),
++                    action=UiAction(UiActionKind.SELECT_TOWER, {"tower_kind": tower_kind}),
++                )
++            )
++            y += 52
++        buttons.append(
++            _Button(
++                label="Старт волны",
++                rect=pygame.Rect(self._map_width + 18, self._height - 56, PANEL_WIDTH - 36, 40),
++                action=UiAction(UiActionKind.START_WAVE),
++            )
++        )
++        return buttons
++
++    @staticmethod
++    def _draw_text(
++        surface: pygame.Surface,
++        text: str,
++        x: int,
++        y: int,
++        font: pygame.font.Font | None = None,
++        color: tuple[int, int, int] = (236, 238, 235),
++    ) -> None:
++        actual_font = font or pygame.font.Font(None, 27)
++        surface.blit(actual_font.render(text, True, color), (x, y))
+diff --git a/ui/economy.py b/ui/economy.py
+new file mode 100644
+index 0000000..0bec339
+--- /dev/null
++++ b/ui/economy.py
+@@ -0,0 +1,31 @@
++from __future__ import annotations
++
++from shared.contracts import PlayerState, TOWER_DEFINITIONS, TowerKind
++
++
++class Economy:
++    def __init__(self, state: PlayerState | None = None) -> None:
++        self.state = state or PlayerState()
++
++    def select_tower(self, tower_kind: TowerKind) -> None:
++        self.state.selected_tower = tower_kind
++
++    def can_buy(self, tower_kind: TowerKind) -> bool:
++        return self.state.money >= TOWER_DEFINITIONS[tower_kind].cost
++
++    def buy(self, tower_kind: TowerKind) -> bool:
++        definition = TOWER_DEFINITIONS[tower_kind]
++        if self.state.money < definition.cost:
++            return False
++        self.state.money -= definition.cost
++        return True
++
++    def add_reward(self, amount: int) -> None:
++        self.state.money += amount
++        self.state.score += amount
++
++    def take_base_damage(self, amount: int) -> None:
++        self.state.lives = max(0, self.state.lives - amount)
++
++    def is_game_over(self) -> bool:
++        return self.state.lives <= 0
+diff --git a/ui/sandbox.py b/ui/sandbox.py
+new file mode 100644
+index 0000000..a2e5eac
+--- /dev/null
++++ b/ui/sandbox.py
+@@ -0,0 +1,35 @@
++import pygame
++
++from shared.contracts import GameSnapshot, PlayerState
++from ui.api import PANEL_WIDTH, UiSystem
++
++
++def main() -> None:
++    pygame.init()
++    map_width, height = 640, 480
++    screen = pygame.display.set_mode((map_width + PANEL_WIDTH, height))
++    pygame.display.set_caption("UI sandbox")
++    ui = UiSystem(map_width, height)
++    player = PlayerState()
++    clock = pygame.time.Clock()
++    running = True
++
++    while running:
++        for event in pygame.event.get():
++            if event.type == pygame.QUIT:
++                running = False
++            action = ui.handle_event(event)
++            if action and action.payload and "tower_kind" in action.payload:
++                player.selected_tower = action.payload["tower_kind"]
++
++        snapshot = GameSnapshot(player.to_view(), 1, (), (), False, False, False)
++        screen.fill((76, 123, 69))
++        ui.draw(screen, snapshot)
++        pygame.display.flip()
++        clock.tick(60)
++
++    pygame.quit()
++
++
++if __name__ == "__main__":
++    main()

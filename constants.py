@@ -40,3 +40,5 @@ COLOR_MAP = {
 }
 
 int = 5
+
+int = 5
