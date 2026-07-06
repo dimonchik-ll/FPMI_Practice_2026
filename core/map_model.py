@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from core.levels import get_level_path
+
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -8,8 +10,6 @@ import xml.etree.ElementTree as ET
 from shared.contracts import GridCell, TileKind, Vector2
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_TMX_PATH = PROJECT_ROOT / "assets" / "maps" / "level-1.tmx"
 
 GID_MASK = 0x0FFFFFFF
 
@@ -64,7 +64,11 @@ class GameMap:
 
     @classmethod
     def create_default(cls) -> "GameMap":
-        return cls.create_from_tmx(DEFAULT_TMX_PATH)
+        return cls.create_from_level(1)
+
+    @classmethod
+    def create_from_level(cls, level_number: int) -> "GameMap":
+        return cls.create_from_tmx(get_level_path(level_number))
 
     @classmethod
     def create_from_tmx(cls, map_path: str | Path) -> "GameMap":
