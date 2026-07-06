@@ -1,30 +1,94 @@
+from __future__ import annotations
+
 import pygame
 
 from shared.contracts import BuildRequest, EnemyKind, EnemyView, TowerKind, Vector2
 from towers.api import TowerSystem
+from towers.models import TargetPriority
+
+
+WIDTH = 820
+HEIGHT = 520
+
+
+def make_enemy(identifier: str, position: Vector2, health: int, reward: int) -> EnemyView:
+    return EnemyView(
+        identifier=identifier,
+        kind=EnemyKind.ENEMY_1,
+        position=position,
+        health=health,
+        max_health=health,
+        speed=45.0,
+        reward=reward,
+        base_damage=1,
+    )
+
+
+def draw_enemy(surface, enemy: EnemyView) -> None:
+    x = int(enemy.position.x)
+    y = int(enemy.position.y)
+    ratio = enemy.health_ratio
+    pygame.draw.circle(surface, (143, 63, 77), (x, y), 17)
+    pygame.draw.rect(surface, (38, 40, 47), (x - 20, y - 30, 40, 7))
+    pygame.draw.rect(surface, (95, 203, 115), (x - 20, y - 30, int(40 * ratio), 7))
 
 
 def main() -> None:
     pygame.init()
-    screen = pygame.display.set_mode((640, 420))
-    pygame.display.set_caption("Towers sandbox")
+    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    pygame.display.set_caption("Towers sandbox — projectiles, priorities and upgrades")
+    font = pygame.font.Font(None, 28)
     clock = pygame.time.Clock()
-    towers = TowerSystem()
-    towers.build(BuildRequest(TowerKind.ARCHER_1, (3, 3), Vector2(180, 230)))
-    enemy = EnemyView("demo-enemy", EnemyKind.ENEMY_1, Vector2(430, 230), 200, 200, 0, 0, 0)
-    running = True
 
+    towers = TowerSystem()
+    rapid = towers.build(BuildRequest(TowerKind.ARCHER_1, (2, 5), Vector2(150, 340)))
+    piercing = towers.build(BuildRequest(TowerKind.ARCHER_2, (6, 5), Vector2(380, 340)))
+    splash = towers.build(BuildRequest(TowerKind.ARCHER_3, (10, 5), Vector2(610, 340)))
+    towers.upgrade(rapid.identifier)
+    towers.set_target_priority(piercing.identifier, TargetPriority.HIGHEST_HEALTH)
+
+    enemies = [
+        make_enemy("near-rapid", Vector2(245, 295), 170, 10),
+        make_enemy("pierce-front", Vector2(465, 295), 200, 20),
+        make_enemy("pierce-back", Vector2(510, 300), 200, 25),
+        make_enemy("splash-center", Vector2(685, 295), 230, 35),
+        make_enemy("splash-nearby", Vector2(716, 315), 230, 30),
+    ]
+
+    total_damage = 0
+    running = True
     while running:
+        delta_time = clock.tick(60) / 1000.0
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
 
-        towers.update(clock.get_time() / 1000.0, (enemy,))
-        screen.fill((65, 104, 61))
+        commands = towers.update(delta_time, tuple(enemies))
+        for command in commands:
+            for enemy in enemies:
+                if enemy.identifier == command.target_id:
+                    enemy.health = max(0, enemy.health - command.amount)
+                    total_damage += command.amount
+
+        for enemy in enemies:
+            if enemy.health <= 0:
+                enemy.health = enemy.max_health
+
+        screen.fill((54, 96, 62))
+        pygame.draw.rect(screen, (173, 136, 88), (0, 390, WIDTH, 28))
         towers.draw(screen)
-        pygame.draw.circle(screen, (190, 64, 80), (int(enemy.position.x), int(enemy.position.y)), 17)
+        for enemy in enemies:
+            draw_enemy(screen, enemy)
+
+        text = font.render(
+            f"Damage commands: {len(commands)} | Total damage: {total_damage} | Projectiles: {towers.projectile_count()}",
+            True,
+            (247, 240, 210),
+        )
+        screen.blit(text, (20, 20))
+        hint = font.render("Archer I: single | Archer II: piercing | Archer III: splash", True, (247, 240, 210))
+        screen.blit(hint, (20, 52))
         pygame.display.flip()
-        clock.tick(60)
 
     pygame.quit()
 

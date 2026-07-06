@@ -1,80 +1,115 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
-from shared.asset_manifest import TOWER_IDLE_ASSETS
-from shared.assets import load_image
-from shared.contracts import (
-    BuildRequest,
-    DamageCommand,
-    EnemyView,
-    TOWER_DEFINITIONS,
-    TowerKind,
-    TowerView,
-)
-
-
-@dataclass(slots=True)
-class _TowerRuntime:
-    identifier: str
-    request: BuildRequest
-    cooldown_remaining: float = 0.0
+from shared.contracts import BuildRequest, DamageCommand, EnemyView, TowerView
+from towers.models import ARCHETYPES, TargetPriority, TowerRuntime, stats_for
+from towers.projectiles import ProjectileSystem
+from towers.sprites import TowerRenderer
 
 
 class TowerSystem:
     def __init__(self) -> None:
-        self._towers: list[_TowerRuntime] = []
+        self._towers: list[TowerRuntime] = []
+        self._projectiles = ProjectileSystem()
+        self._renderer = TowerRenderer()
         self._next_id = 1
 
     def build(self, request: BuildRequest) -> TowerView:
-        tower = _TowerRuntime(identifier=f"tower-{self._next_id}", request=request)
+        archetype = ARCHETYPES[request.tower_kind]
+        tower = TowerRuntime(
+            identifier=f"tower-{self._next_id}",
+            request=request,
+            level=1,
+            priority=archetype.default_priority,
+        )
         self._next_id += 1
         self._towers.append(tower)
         return self._to_view(tower)
 
-    def update(self, delta_time: float, enemies: tuple[EnemyView, ...]) -> list[DamageCommand]:
-        commands: list[DamageCommand] = []
+    def update(
+        self,
+        delta_time: float,
+        enemies: tuple[EnemyView, ...],
+    ) -> list[DamageCommand]:
+        delta_time = max(0.0, delta_time)
+
         for tower in self._towers:
+            tower.animation_time += delta_time
+            tower.attack_animation_remaining = max(0.0, tower.attack_animation_remaining - delta_time)
             tower.cooldown_remaining = max(0.0, tower.cooldown_remaining - delta_time)
-            if tower.cooldown_remaining > 0:
+            if tower.cooldown_remaining > 0.0:
                 continue
 
-            definition = TOWER_DEFINITIONS[tower.request.tower_kind]
-            target = self._find_target(tower, enemies, definition.attack_range)
+            stats = stats_for(tower.kind, tower.level)
+            target = self._find_target(tower, enemies, stats.attack_range)
             if target is None:
                 continue
 
-            tower.cooldown_remaining = 1.0 / definition.attacks_per_second
-            commands.append(
-                DamageCommand(
-                    target_id=target.identifier,
-                    amount=definition.damage,
-                    source_id=tower.identifier,
-                )
+            tower.cooldown_remaining = 1.0 / stats.attacks_per_second
+            tower.attack_animation_remaining = 0.22
+            self._projectiles.spawn(
+                source_id=tower.identifier,
+                target_id=target.identifier,
+                position=tower.request.position,
+                damage=stats.damage,
+                speed=stats.projectile_speed,
+                extra_pierces=stats.extra_pierces,
+                splash_radius=stats.splash_radius,
+                splash_damage_multiplier=stats.splash_damage_multiplier,
+                max_travel_distance=stats.attack_range,
             )
-        return commands
+
+        return self._projectiles.update(delta_time, enemies)
+
+    def upgrade(self, tower_identifier: str) -> bool:
+        tower = self._tower_by_id(tower_identifier)
+        if tower is None:
+            return False
+
+        max_level = ARCHETYPES[tower.kind].max_level
+        if tower.level >= max_level:
+            return False
+
+        tower.level += 1
+        return True
+
+    def level_of(self, tower_identifier: str) -> int | None:
+        tower = self._tower_by_id(tower_identifier)
+        return None if tower is None else tower.level
+
+    def set_target_priority(
+        self,
+        tower_identifier: str,
+        priority: TargetPriority | str,
+    ) -> bool:
+        tower = self._tower_by_id(tower_identifier)
+        if tower is None:
+            return False
+
+        try:
+            tower.priority = priority if isinstance(priority, TargetPriority) else TargetPriority(priority)
+        except ValueError:
+            return False
+        return True
+
+    def target_priority_of(self, tower_identifier: str) -> TargetPriority | None:
+        tower = self._tower_by_id(tower_identifier)
+        return None if tower is None else tower.priority
 
     def views(self) -> tuple[TowerView, ...]:
         return tuple(self._to_view(tower) for tower in self._towers)
 
+    def projectile_count(self) -> int:
+        return len(self._projectiles.projectiles())
+
     def draw(self, surface) -> None:
-        import pygame
-
         for tower in self._towers:
-            definition = TOWER_DEFINITIONS[tower.request.tower_kind]
-            image = load_image(TOWER_IDLE_ASSETS[tower.request.tower_kind], (58, 96))
-            x = int(tower.request.position.x)
-            y = int(tower.request.position.y)
-            if image is not None:
-                rect = image.get_rect(midbottom=(x, y + 24))
-                surface.blit(image, rect)
-            else:
-                pygame.draw.circle(surface, (93, 83, 59), (x, y), 19)
-                pygame.draw.circle(surface, (239, 212, 128), (x, y), 15, 2)
+            self._renderer.draw_tower(surface, tower)
+        for projectile in self._projectiles.projectiles():
+            self._renderer.draw_projectile(surface, projectile)
 
+    @staticmethod
     def _find_target(
-        self,
-        tower: _TowerRuntime,
+        tower: TowerRuntime,
         enemies: tuple[EnemyView, ...],
         attack_range: float,
     ) -> EnemyView | None:
@@ -85,13 +120,29 @@ class TowerSystem:
         ]
         if not valid:
             return None
-        return min(valid, key=lambda enemy: tower.request.position.distance_to(enemy.position))
+
+        def key(enemy: EnemyView) -> tuple[float, float, str]:
+            distance = tower.request.position.distance_to(enemy.position)
+            if tower.priority == TargetPriority.LOWEST_HEALTH:
+                return enemy.health, distance, enemy.identifier
+            if tower.priority == TargetPriority.HIGHEST_HEALTH:
+                return -enemy.health, distance, enemy.identifier
+            if tower.priority == TargetPriority.FASTEST:
+                return -enemy.speed, distance, enemy.identifier
+            if tower.priority == TargetPriority.HIGHEST_REWARD:
+                return -enemy.reward, distance, enemy.identifier
+            return distance, enemy.health_ratio, enemy.identifier
+
+        return min(valid, key=key)
+
+    def _tower_by_id(self, tower_identifier: str) -> TowerRuntime | None:
+        return next((tower for tower in self._towers if tower.identifier == tower_identifier), None)
 
     @staticmethod
-    def _to_view(tower: _TowerRuntime) -> TowerView:
+    def _to_view(tower: TowerRuntime) -> TowerView:
         return TowerView(
             identifier=tower.identifier,
-            kind=tower.request.tower_kind,
+            kind=tower.kind,
             position=tower.request.position,
             cell=tower.request.cell,
             cooldown_remaining=tower.cooldown_remaining,
