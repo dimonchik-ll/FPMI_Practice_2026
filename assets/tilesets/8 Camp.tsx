@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<tileset version="1.10" tiledversion="1.12.2" name="8 Camp" tilewidth="57" tileheight="51" tilecount="6" columns="0">
+<tileset version="1.10" tiledversion="1.12.2" name="8 Camp" tilewidth="57" tileheight="51" tilecount="7" columns="0">
  <grid orientation="orthogonal" width="1" height="1"/>
  <tile id="0">
   <image source="../tiles/objects/8 Camp/1.png" width="57" height="36"/>
@@ -22,5 +22,8 @@
  </tile>
  <tile id="5">
   <image source="../tiles/objects/8 Camp/6.png" width="22" height="13"/>
+ </tile>
+ <tile id="6">
+  <image source="../tiles/objects/8 Camp/5.png" width="22" height="14"/>
  </tile>
 </tileset>

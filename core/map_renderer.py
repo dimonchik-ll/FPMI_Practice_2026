@@ -1,50 +1,126 @@
 from __future__ import annotations
 
+from pathlib import Path
+from typing import Any
+
 import pygame
+from pytmx import TiledTileLayer
+from pytmx.util_pygame import load_pygame
 
 from core.map_model import GameMap
-from shared.asset_manifest import TILE_ASSETS
-from shared.assets import load_image
 from shared.contracts import TileKind
 
 
 class MapRenderer:
-    def draw(self, surface: pygame.Surface, game_map: GameMap) -> None:
+    DRAW_LAYERS = {
+        "Ground",
+        "Road",
+        "Shadow",
+        "Stone",
+        "Bush",
+        "Tree",
+        "Camp",
+        "Decor",
+        "Buildable",
+    }
+
+    def __init__(self) -> None:
+        self._tmx_data: Any | None = None
+        self._loaded_path: Path | None = None
+
+    def draw(
+        self,
+        surface: pygame.Surface,
+        game_map: GameMap,
+    ) -> None:
+        if game_map.tmx_path is None:
+            self._draw_fallback(surface, game_map)
+            return
+
+        tmx_data = self._load_tmx(game_map)
+
+        for layer in tmx_data.layers:
+            if not isinstance(layer, TiledTileLayer):
+                continue
+
+            if layer.name not in self.DRAW_LAYERS:
+                continue
+
+            for x, y, image in layer.tiles():
+                if image is None:
+                    continue
+
+                draw_x = x * game_map.tile_size
+                draw_y = (
+                    (y + 1) * game_map.tile_size
+                    - image.get_height()
+                )
+
+                surface.blit(image, (draw_x, draw_y))
+
+    def _load_tmx(self, game_map: GameMap) -> Any:
+        map_path = game_map.tmx_path.resolve()
+
+        if (
+            self._tmx_data is not None
+            and self._loaded_path == map_path
+        ):
+            return self._tmx_data
+
+        tmx_data = load_pygame(str(map_path))
+
+        if tmx_data.width != game_map.cols:
+            raise ValueError("Ширина TMX не совпадает с GameMap.")
+
+        if tmx_data.height != game_map.rows:
+            raise ValueError("Высота TMX не совпадает с GameMap.")
+
+        if tmx_data.tilewidth != game_map.tile_size:
+            raise ValueError("Размер тайла TMX не совпадает с GameMap.")
+
+        if tmx_data.tileheight != game_map.tile_size:
+            raise ValueError("Размер тайла TMX не совпадает с GameMap.")
+
+        self._tmx_data = tmx_data
+        self._loaded_path = map_path
+
+        return tmx_data
+
+    def _draw_fallback(
+        self,
+        surface: pygame.Surface,
+        game_map: GameMap,
+    ) -> None:
         size = game_map.tile_size
-        grass = load_image(TILE_ASSETS["grass"], (size, size))
-        road = load_image(TILE_ASSETS["road"], (size, size))
-        build_slot = load_image(TILE_ASSETS["build_slot"], (size, size))
 
         for row in range(game_map.rows):
             for col in range(game_map.cols):
                 cell = (row, col)
-                rect = pygame.Rect(col * size, row * size, size, size)
+
+                rect = pygame.Rect(
+                    col * size,
+                    row * size,
+                    size,
+                    size,
+                )
+
                 tile = game_map.tile_at(cell)
 
-                if tile == TileKind.BLOCKED:
-                    pygame.draw.rect(surface, (56, 75, 56), rect)
-                    continue
-
-                if tile in {TileKind.ROAD, TileKind.SPAWN, TileKind.GOAL}:
-                    if road is not None:
-                        surface.blit(road, rect)
-                    else:
-                        pygame.draw.rect(surface, (190, 126, 75), rect)
+                if tile in {
+                    TileKind.ROAD,
+                    TileKind.SPAWN,
+                    TileKind.GOAL,
+                }:
+                    color = (182, 122, 76)
                 else:
-                    if grass is not None:
-                        surface.blit(grass, rect)
-                    else:
-                        pygame.draw.rect(surface, (107, 160, 80), rect)
+                    color = (89, 143, 75)
 
-                if tile == TileKind.BUILD_SLOT and cell not in game_map.occupied_cells:
-                    if build_slot is not None:
-                        surface.blit(build_slot, rect)
-                    else:
-                        pygame.draw.circle(surface, (220, 196, 102), rect.center, size // 3, 2)
+                pygame.draw.rect(surface, color, rect)
 
-                if tile == TileKind.SPAWN:
-                    pygame.draw.circle(surface, (82, 149, 221), rect.center, size // 5)
-                elif tile == TileKind.GOAL:
-                    pygame.draw.circle(surface, (197, 71, 64), rect.center, size // 5)
-
-                pygame.draw.rect(surface, (40, 56, 40), rect, 1)
+                if tile == TileKind.BUILD_SLOT:
+                    pygame.draw.rect(
+                        surface,
+                        (228, 194, 79),
+                        rect,
+                        width=2,
+                    )
