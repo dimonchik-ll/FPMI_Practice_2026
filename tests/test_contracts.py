@@ -13,7 +13,8 @@ def test_default_map_has_route() -> None:
 
 def test_build_slot_can_only_be_occupied_once() -> None:
     game_map = GameMap.create_default()
-    cell = (3, 5)
+    first_zone = next(iter(game_map.build_zones.values()))
+    cell = next(iter(first_zone.cells))
     assert game_map.occupy(cell)
     assert not game_map.occupy(cell)
 
