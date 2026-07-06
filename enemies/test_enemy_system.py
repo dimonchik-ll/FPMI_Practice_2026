@@ -1,4 +1,11 @@
-from enemies.api import ENEMY_DISPLAY_NAMES, EnemySystem, WAVE_PLANS
+from enemies.api import (
+    ENEMY_DISPLAY_NAMES,
+    MIN_SPAWN_INTERVAL,
+    EnemySystem,
+    WAVE_PLANS,
+    wave_plan_for,
+    wave_settings_for,
+)
 from shared.contracts import DamageCommand, EnemyKind, GameEventKind, Vector2
 
 
@@ -131,3 +138,25 @@ def test_boss_enters_rage_below_half_health(monkeypatch) -> None:
 
     assert after.health <= after.max_health / 2
     assert after.speed > before.speed
+
+
+def test_wave_five_has_more_enemies_than_wave_four() -> None:
+    assert len(wave_plan_for(5)) > len(wave_plan_for(4))
+
+
+def test_dynamic_wave_has_boss_every_third_wave() -> None:
+    assert EnemyKind.ENEMY_4 in wave_plan_for(6)
+    assert EnemyKind.ENEMY_4 in wave_plan_for(9)
+
+
+def test_later_waves_are_stronger_and_spawn_faster() -> None:
+    wave_four = wave_settings_for(4)
+    wave_five = wave_settings_for(5)
+
+    assert wave_five.health_multiplier > wave_four.health_multiplier
+    assert wave_five.speed_multiplier > wave_four.speed_multiplier
+    assert wave_five.spawn_interval < wave_four.spawn_interval
+
+
+def test_spawn_interval_has_lower_limit() -> None:
+    assert wave_settings_for(1_000).spawn_interval == MIN_SPAWN_INTERVAL
