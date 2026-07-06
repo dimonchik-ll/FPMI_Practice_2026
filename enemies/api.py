@@ -85,6 +85,7 @@ ANIMATION_FILES: dict[_EnemyState, tuple[str, ...]] = {
     _EnemyState.WALKING: ("down_walk.png",),
     _EnemyState.ATTACKING: (
         "down_attack.png",
+        "down_special.png",
         "attack.png",
         "down_walk.png",
     ),
@@ -110,6 +111,44 @@ ENEMY_COLORS: dict[EnemyKind, tuple[int, int, int]] = {
 
 GOAL_ATTACK_DURATION = 0.35
 DEATH_ANIMATION_DURATION = 0.55
+MIN_SPAWN_INTERVAL = 0.25
+
+
+def wave_plan_for(wave_number: int) -> tuple[EnemyKind, ...]:
+    if wave_number in WAVE_PLANS:
+        return WAVE_PLANS[wave_number]
+
+    stage = wave_number - 4
+
+    scouts = 6 + stage * 2
+    brutes = 3 + stage
+    golems = 1 + stage // 2
+    bosses = 1 if wave_number % 3 == 0 else 0
+
+    return (
+        (EnemyKind.ENEMY_1,) * scouts
+        + (EnemyKind.ENEMY_2,) * brutes
+        + (EnemyKind.ENEMY_3,) * golems
+        + (EnemyKind.ENEMY_4,) * bosses
+    )
+
+
+def wave_settings_for(wave_number: int) -> _WaveSettings:
+    if wave_number in WAVE_SETTINGS:
+        return WAVE_SETTINGS[wave_number]
+
+    stage = wave_number - 4
+    base = WAVE_SETTINGS[4]
+
+    return _WaveSettings(
+        spawn_interval=max(
+            MIN_SPAWN_INTERVAL,
+            base.spawn_interval - 0.035 * stage,
+        ),
+        health_multiplier=base.health_multiplier * (1 + 0.14 * stage),
+        speed_multiplier=base.speed_multiplier * (1 + 0.04 * stage),
+        reward_multiplier=base.reward_multiplier * (1 + 0.10 * stage),
+    )
 
 
 @dataclass(slots=True)
@@ -143,17 +182,10 @@ class EnemySystem:
         if self._active_wave is not None or not route or wave_number < 1:
             return False
 
-        fallback_wave = max(WAVE_PLANS)
-
         self._active_wave = wave_number
         self._route = route
-        self._queue = list(
-            WAVE_PLANS.get(wave_number, WAVE_PLANS[fallback_wave])
-        )
-        self._wave_settings = WAVE_SETTINGS.get(
-            wave_number,
-            WAVE_SETTINGS[max(WAVE_SETTINGS)],
-        )
+        self._queue = list(wave_plan_for(wave_number))
+        self._wave_settings = wave_settings_for(wave_number)
         self._spawn_cooldown = 0.0
 
         return True
@@ -277,8 +309,6 @@ class EnemySystem:
     def draw(self, surface: Any) -> None:
         import pygame
 
-        font = pygame.font.Font(None, 16)
-
         for enemy in self._enemies:
             center = (int(enemy.position.x), int(enemy.position.y))
             image = self._load_animation_frame(enemy)
@@ -332,16 +362,6 @@ class EnemySystem:
                     int(health_bar.width * health_ratio),
                     health_bar.height,
                 ),
-            )
-
-            title = font.render(
-                ENEMY_DISPLAY_NAMES[enemy.kind],
-                True,
-                (245, 245, 245),
-            )
-            surface.blit(
-                title,
-                title.get_rect(center=(center[0], center[1] - 43)),
             )
 
     def _spawn_ready_enemies(self) -> None:
