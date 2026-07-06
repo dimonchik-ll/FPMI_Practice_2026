@@ -44,6 +44,12 @@ class TowerDefenseApp:
                 self.running = False
                 continue
 
+            if (event.type == pygame.MOUSEBUTTONDOWN
+                and event.button == 1
+                and self.ui.is_overlay_point(event.pos)
+            ):
+                continue
+
             action = self.ui.handle_event(event)
             if action is not None:
                 self._handle_ui_action(action.kind, action.payload or {})
