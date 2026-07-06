@@ -9,6 +9,13 @@ from ui.widgets import UiComponent, draw_text, draw_text_right
 
 
 class GameStatsPanel(UiComponent):
+    _LABELS = (
+        "Gold",
+        "HP",
+        "Wave",
+        "Score",
+    )
+
     def __init__(
         self,
         layout: UiLayout,
@@ -29,12 +36,14 @@ class GameStatsPanel(UiComponent):
             return
 
         background = pygame.Surface(panel.size, pygame.SRCALPHA)
+
         pygame.draw.rect(
             background,
-            (18, 28, 34, 220),
+            (*self._theme.panel_background, 230),
             background.get_rect(),
-            border_radius=10,
+            border_bottom_right_radius=10,
         )
+
         surface.blit(background, panel.topleft)
 
         pygame.draw.rect(
@@ -42,47 +51,51 @@ class GameStatsPanel(UiComponent):
             self._theme.panel_border,
             panel,
             width=1,
-            border_radius=10,
+            border_bottom_right_radius=10,
         )
 
         stats = (
-            ("Золото", snapshot.player.money, (232, 196, 102)),
-            ("Жизни", snapshot.player.lives, (222, 113, 105)),
-            ("Волна", snapshot.wave_number, (129, 185, 221)),
-            ("Счёт", snapshot.player.score, (155, 209, 155)),
+            (snapshot.player.money, (232, 196, 102)),
+            (snapshot.player.lives, (222, 113, 105)),
+            (snapshot.wave_number, (129, 185, 221)),
+            (snapshot.player.score, (155, 209, 155)),
         )
 
-        for index, (label, value, color) in enumerate(stats):
-            self._draw_stat(surface, index, label, value, color)
+        for index, (value, color) in enumerate(stats):
+            rect = self._layout.map_stat_card_rect(index)
+
+            if index > 0:
+                pygame.draw.line(
+                    surface,
+                    self._theme.panel_border,
+                    (rect.x, rect.y + 7),
+                    (rect.x, rect.bottom - 7),
+                    1,
+                )
+
+            self._draw_stat(
+                surface,
+                rect,
+                self._LABELS[index],
+                value,
+                color,
+            )
 
     def _draw_stat(
         self,
         surface: pygame.Surface,
-        index: int,
+        rect: pygame.Rect,
         label: str,
         value: int,
         color: Color,
     ) -> None:
-        rect = self._layout.map_stat_card_rect(index)
-
-        pygame.draw.rect(
-            surface,
-            (38, 53, 62),
-            rect,
-            border_radius=7,
-        )
-        pygame.draw.rect(
-            surface,
-            color,
-            rect,
-            width=1,
-            border_radius=7,
-        )
+        dot_x = rect.x + 8
+        text_y = rect.y + 12
 
         pygame.draw.circle(
             surface,
             color,
-            (rect.x + 9, rect.centery),
+            (dot_x, rect.centery),
             3,
         )
 
@@ -91,7 +104,7 @@ class GameStatsPanel(UiComponent):
             label,
             self._fonts.small,
             self._theme.muted_text,
-            (rect.x + 17, rect.y + 5),
+            (dot_x + 5, text_y),
         )
 
         draw_text_right(
@@ -99,5 +112,5 @@ class GameStatsPanel(UiComponent):
             str(value),
             self._fonts.small,
             self._theme.body_text,
-            (rect.right - 8, rect.y + 5),
+            (rect.right - 7, text_y),
         )

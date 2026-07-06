@@ -29,7 +29,7 @@ def main() -> None:
 
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_m:
-                    player.money += 20
+                    player.money += 2000
                 elif event.key == pygame.K_n and wave_is_active:
                     wave_is_active = False
                     wave_number += 1

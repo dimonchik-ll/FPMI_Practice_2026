@@ -53,30 +53,30 @@ class UiLayout:
 
     @property
     def map_stats_panel(self) -> pygame.Rect:
-        available_width = max(0, self.map_width - self.margin * 2)
-        width = min(254, available_width)
-
         return pygame.Rect(
-            self.margin,
-            self.margin,
-            width,
-            76,
+            0,
+            0,
+            min(self.map_width, 328),
+            36,
         )
 
     def map_stat_card_rect(self, index: int) -> pygame.Rect:
         panel = self.map_stats_panel
-        inner_margin = 7
-        inner_width = panel.width - inner_margin * 2
-        card_width = (inner_width - self.gap) // 2
-        card_height = 27
+        stat_count = 4
+        cell_width = panel.width // stat_count
+        x = panel.x + index * cell_width
 
-        row, column = divmod(index, 2)
+        width = (
+            panel.right - x
+            if index == stat_count - 1
+            else cell_width
+        )
 
         return pygame.Rect(
-            panel.x + inner_margin + column * (card_width + self.gap),
-            panel.y + inner_margin + row * (card_height + self.gap),
-            card_width,
-            card_height,
+            x,
+            panel.y,
+            width,
+            panel.height,
         )
 
     @property
