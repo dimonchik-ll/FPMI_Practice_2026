@@ -4,21 +4,34 @@ import pygame
 
 from core.map_model import GameMap
 from core.map_renderer import MapRenderer
-from enemies.api import EnemySystem
+from enemies.api import EnemySystem, wave_plan_for
 from shared.contracts import DamageCommand, GameEvent, GameEventKind
 
 
 def event_message(event: GameEvent) -> str:
     if event.kind == GameEventKind.ENEMY_DEFEATED:
-        return f"Enemy defeated: +{event.payload['reward']} gold"
+        return f"Враг побеждён: +{event.payload['reward']} золота"
 
     if event.kind == GameEventKind.ENEMY_REACHED_GOAL:
-        return f"Base damaged: -{event.payload['damage']} lives"
+        return f"База получила урон: -{event.payload['damage']}"
 
     if event.kind == GameEventKind.WAVE_COMPLETED:
-        return f"Wave {event.payload['wave_number']} completed"
+        return f"Волна {event.payload['wave_number']} завершена"
 
     return str(event.payload)
+
+
+def start_selected_wave(
+    enemies: EnemySystem,
+    wave_number: int,
+    route: tuple,
+) -> bool:
+    if not enemies.start_wave(wave_number, route):
+        return False
+
+    enemy_count = len(wave_plan_for(wave_number))
+    print(f"Запущена волна {wave_number}: {enemy_count} врагов")
+    return True
 
 
 def main() -> None:
@@ -31,14 +44,14 @@ def main() -> None:
     pygame.display.set_caption("Enemies sandbox")
 
     clock = pygame.time.Clock()
-    font = pygame.font.Font(None, 28)
+    font = pygame.font.Font(None, 26)
+    small_font = pygame.font.Font(None, 20)
 
     renderer = MapRenderer()
     enemies = EnemySystem()
     route = game_map.build_route()
 
-    enemies.start_wave(1, route)
-
+    next_wave = 1
     messages: list[tuple[str, float]] = []
     running = True
 
@@ -48,6 +61,7 @@ def main() -> None:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+                continue
 
             if event.type != pygame.KEYDOWN:
                 continue
@@ -60,8 +74,7 @@ def main() -> None:
 
                 if active_enemies:
                     target = active_enemies[0]
-
-                    damage_events = enemies.apply_damage(
+                    events = enemies.apply_damage(
                         [
                             DamageCommand(
                                 target_id=target.identifier,
@@ -71,8 +84,8 @@ def main() -> None:
                         ]
                     )
 
-                    for damage_event in damage_events:
-                        text = event_message(damage_event)
+                    for game_event in events:
+                        text = event_message(game_event)
                         print(text)
                         messages.append((text, 2.5))
 
@@ -83,10 +96,27 @@ def main() -> None:
                 pygame.K_4: 4,
             }
 
-            wave_number = wave_keys.get(event.key)
+            chosen_wave = wave_keys.get(event.key)
 
-            if wave_number is not None:
-                enemies.start_wave(wave_number, route)
+            if chosen_wave is not None:
+                if start_selected_wave(enemies, chosen_wave, route):
+                    next_wave = chosen_wave + 1
+                    messages.append(
+                        (
+                            f"Запущена волна {chosen_wave}",
+                            2.5,
+                        )
+                    )
+
+            if event.key == pygame.K_n:
+                if start_selected_wave(enemies, next_wave, route):
+                    messages.append(
+                        (
+                            f"Запущена волна {next_wave}",
+                            2.5,
+                        )
+                    )
+                    next_wave += 1
 
         for game_event in enemies.update(delta_time):
             text = event_message(game_event)
@@ -97,24 +127,38 @@ def main() -> None:
         renderer.draw(screen, game_map)
         enemies.draw(screen)
 
-        help_text = font.render(
-            "1-4: start wave | SPACE: damage first enemy | ESC: exit",
+        title = font.render(
+            f"Следующая волна: {next_wave}",
             True,
             (245, 245, 245),
         )
-        screen.blit(help_text, (12, 12))
+        screen.blit(title, (12, 12))
+
+        help_text = small_font.render(
+            "1-4: волны | N: следующая волна | "
+            "SPACE: урон | ESC: выход",
+            True,
+            (245, 245, 245),
+        )
+        screen.blit(help_text, (12, 42))
 
         updated_messages: list[tuple[str, float]] = []
 
-        for index, (message, remaining_time) in enumerate(messages):
-            if remaining_time <= 0:
-                continue
+        for message, remaining_time in messages:
+            if remaining_time > 0:
+                updated_messages.append(
+                    (message, remaining_time - delta_time)
+                )
 
-            text = font.render(message, True, (255, 226, 115))
-            screen.blit(text, (12, 44 + index * 26))
-            updated_messages.append((message, remaining_time - delta_time))
+        messages = updated_messages[-5:]
 
-        messages = updated_messages
+        for index, (message, _) in enumerate(messages):
+            text = small_font.render(
+                message,
+                True,
+                (255, 226, 115),
+            )
+            screen.blit(text, (12, 70 + index * 22))
 
         pygame.display.flip()
 
