@@ -112,3 +112,13 @@ def test_cannot_build_outside_build_zone(
 
     assert not game_map.is_buildable(outside_cell)
     assert not game_map.occupy(outside_cell)
+    
+    @pytest.mark.parametrize("level_number", [1, 2])
+    def test_each_level_loads_and_has_route(level_number: int) -> None:
+        game_map = GameMap.create_from_level(level_number)
+
+        assert game_map.rows == 18
+        assert game_map.cols == 25
+        assert game_map.tile_size == 32
+        assert game_map.build_route()
+        assert game_map.build_zones
