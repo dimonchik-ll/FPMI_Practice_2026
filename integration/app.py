@@ -17,11 +17,7 @@ from shared.contracts import (
 from towers.api import TowerSystem
 from ui.api import PANEL_WIDTH, UiSystem
 from ui.economy import Economy
-from ui.main_menu import (
-    MainMenu,
-    MainMenuActionKind,
-    MapMenuOption,
-)
+from ui.main_menu import MainMenu, MainMenuActionKind, MapMenuOption
 
 
 MAX_WAVES = max(WAVE_PLANS)
@@ -116,6 +112,9 @@ class TowerDefenseApp:
             return
 
         if action_kind == UiActionKind.SELECT_TOWER:
+            if self.paused:
+                return
+
             tower_kind = payload.get("tower_kind")
             if isinstance(tower_kind, TowerKind):
                 self.economy.select_tower(tower_kind)
@@ -234,9 +233,7 @@ def _build_menu_options() -> tuple[MapMenuOption, ...]:
 
     for level_number in sorted(LEVEL_PATHS):
         game_map = GameMap.create_from_level(level_number)
-        preview = pygame.Surface(
-            (game_map.pixel_width, game_map.pixel_height),
-        )
+        preview = pygame.Surface((game_map.pixel_width, game_map.pixel_height))
         preview.fill((20, 30, 25))
         renderer.draw(preview, game_map)
 
