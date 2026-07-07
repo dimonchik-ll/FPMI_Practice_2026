@@ -45,9 +45,11 @@ def main() -> None:
 
     towers = TowerSystem()
     rapid = towers.build(BuildRequest(TowerKind.ARCHER_1, (2, 5), Vector2(150, 340)))
-    piercing = towers.build(BuildRequest(TowerKind.ARCHER_2, (6, 5), Vector2(380, 340)))
-    splash = towers.build(BuildRequest(TowerKind.ARCHER_3, (10, 5), Vector2(610, 340)))
-    towers.upgrade(rapid.identifier)
+    piercing = towers.build(BuildRequest(TowerKind.ARCHER_1, (6, 5), Vector2(380, 340)))
+    splash = towers.build(BuildRequest(TowerKind.ARCHER_1, (10, 5), Vector2(610, 340)))
+    towers.upgrade(piercing.identifier)
+    towers.upgrade(splash.identifier)
+    towers.upgrade(splash.identifier)
 
     enemies = [
         make_enemy("near-rapid", Vector2(245, 295), 170, 10),
@@ -94,7 +96,7 @@ def main() -> None:
         )
         screen.blit(text, (20, 20))
         hint = font.render(
-            "Default targeting: first enemy in range | Archer II: chain | Archer III: wide splash | Right click: remove tower",
+            "Build Archer I, then upgrade it | Archer II: chain | Archer III: wide splash | Right click: remove tower",
             True,
             (247, 240, 210),
         )

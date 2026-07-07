@@ -1,11 +1,27 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
-from shared.contracts import BuildRequest, DamageCommand, EnemyView, TowerView
+from shared.contracts import (
+    BuildRequest,
+    DamageCommand,
+    EnemyView,
+    TowerKind,
+    TowerView,
+    next_tower_kind,
+    tower_level,
+    tower_upgrade_cost,
+)
 from towers.models import ARCHETYPES, Facing, TargetPriority, TowerRuntime, stats_for
 from towers.projectiles import ProjectileSystem
 from towers.sprites import TowerRenderer
+
+
+_INITIAL_BUILD_KIND = TowerKind.ARCHER_1
+_TOWER_CLICK_HALF_WIDTH = 52.0
+_TOWER_CLICK_TOP_OFFSET = 118.0
+_TOWER_CLICK_BOTTOM_OFFSET = 42.0
 
 
 class TowerSystem:
@@ -16,6 +32,18 @@ class TowerSystem:
         self._next_id = 1
 
     def build(self, request: BuildRequest) -> TowerView:
+        """Builds only the initial archer level.
+
+        Archer II and Archer III are upgrades of an existing tower. Keeping the
+        guard here prevents bypassing the UI by creating a high-level tower
+        directly from integration code.
+        """
+        if request.tower_kind != _INITIAL_BUILD_KIND:
+            raise ValueError(
+                "Можно построить только Лучника I. "
+                "Лучники II и III получаются через улучшение."
+            )
+
         archetype = ARCHETYPES[request.tower_kind]
         tower = TowerRuntime(
             identifier=f"tower-{self._next_id}",
@@ -43,7 +71,9 @@ class TowerSystem:
             )
             tower.cooldown_remaining = max(0.0, tower.cooldown_remaining - delta_time)
 
-            stats = stats_for(tower.kind, tower.level)
+            # The current TowerKind already represents the current upgrade
+            # level, so there is no second multiplier based on tower.level.
+            stats = stats_for(tower.kind, 1)
             target = self._find_target(tower, enemies, stats.attack_range)
             if target is not None:
                 tower.facing = self._facing_towards(tower, target)
@@ -69,12 +99,7 @@ class TowerSystem:
         return damage_commands
 
     def remove(self, tower_identifier: str) -> TowerView | None:
-        """Удаляет башню по идентификатору и отменяет все её снаряды.
-
-        Возвращает снимок удалённой башни. По нему интеграция может
-        освободить соответствующую клетку карты и, при необходимости,
-        вернуть игроку часть стоимости.
-        """
+        """Removes a tower by identifier and cancels its flying projectiles."""
         for index, tower in enumerate(self._towers):
             if tower.identifier != tower_identifier:
                 continue
@@ -85,59 +110,73 @@ class TowerSystem:
         return None
 
     def remove_at_cell(self, cell: tuple[int, int]) -> TowerView | None:
-        """Удаляет башню, установленную на указанной клетке."""
-        for tower in self._towers:
-            if tower.request.cell == cell:
-                return self.remove(tower.identifier)
-        return None
+        """Removes the tower installed on the specified build cell."""
+        tower = next(
+            (candidate for candidate in self._towers if candidate.request.cell == cell),
+            None,
+        )
+        return None if tower is None else self.remove(tower.identifier)
 
     def remove_at_position(
         self,
         position,
         *,
-        radius: float = 42.0,
+        radius: float | None = None,
     ) -> TowerView | None:
-        """Удаляет ближайшую башню в радиусе клика.
-
-        Метод удобен для обработки правой кнопки мыши. Для игрового
-        состояния лучше использовать возвращаемый ``TowerView.cell``
-        и освободить слот в ``CoreWorld``.
-        """
-        safe_radius = max(0.0, radius)
-        candidates = [
-            tower
-            for tower in self._towers
-            if tower.request.position.distance_to(position) <= safe_radius
-        ]
-        if not candidates:
-            return None
-
-        nearest = min(
-            candidates,
-            key=lambda tower: (
-                tower.request.position.distance_to(position),
-                tower.identifier,
-            ),
-        )
-        return self.remove(nearest.identifier)
+        """Compatibility helper for callers that intentionally remove by click."""
+        tower = self._tower_at_position_runtime(position, radius=radius)
+        return None if tower is None else self.remove(tower.identifier)
 
     def tower_at_cell(self, cell: tuple[int, int]) -> TowerView | None:
-        """Возвращает башню на клетке, не изменяя игровое состояние."""
-        for tower in self._towers:
-            if tower.request.cell == cell:
-                return self._to_view(tower)
-        return None
+        """Returns a tower on a build cell without changing game state."""
+        tower = next(
+            (candidate for candidate in self._towers if candidate.request.cell == cell),
+            None,
+        )
+        return None if tower is None else self._to_view(tower)
+
+    def tower_at_position(
+        self,
+        position,
+        *,
+        radius: float | None = None,
+    ) -> TowerView | None:
+        """Returns the visible tower under a map click without deleting it.
+
+        The selection hitbox covers the whole tower sprite, including the top
+        platform, rather than only the centre of its build cell.
+        """
+        tower = self._tower_at_position_runtime(position, radius=radius)
+        return None if tower is None else self._to_view(tower)
+
+    def can_upgrade(self, tower_identifier: str) -> bool:
+        tower = self._tower_by_id(tower_identifier)
+        return tower is not None and next_tower_kind(tower.kind) is not None
+
+    def upgrade_cost(self, tower_identifier: str) -> int | None:
+        tower = self._tower_by_id(tower_identifier)
+        if tower is None:
+            return None
+        return tower_upgrade_cost(tower.kind)
 
     def upgrade(self, tower_identifier: str) -> bool:
+        """Upgrades Archer I → Archer II → Archer III.
+
+        The tower keeps its identifier and build cell, while its asset, attack
+        type and base statistics switch to the next TowerKind.
+        """
         tower = self._tower_by_id(tower_identifier)
         if tower is None:
             return False
 
-        max_level = ARCHETYPES[tower.kind].max_level
-        if tower.level >= max_level:
+        upgraded_kind = next_tower_kind(tower.kind)
+        if upgraded_kind is None:
             return False
 
-        tower.level += 1
+        tower.request = replace(tower.request, tower_kind=upgraded_kind)
+        tower.level = tower_level(upgraded_kind)
+        tower.cooldown_remaining = 0.0
+        tower.attack_animation_remaining = 0.0
         return True
 
     def level_of(self, tower_identifier: str) -> int | None:
@@ -177,6 +216,40 @@ class TowerSystem:
         for projectile in self._projectiles.projectiles():
             self._renderer.draw_projectile(surface, projectile)
 
+    def _tower_at_position_runtime(self, position, *, radius: float | None) -> TowerRuntime | None:
+        if radius is not None:
+            safe_radius = max(0.0, radius)
+            candidates = [
+                tower
+                for tower in self._towers
+                if tower.request.position.distance_to(position) <= safe_radius
+            ]
+        else:
+            candidates = [
+                tower
+                for tower in self._towers
+                if self._contains_visible_tower(tower, position)
+            ]
+
+        if not candidates:
+            return None
+
+        return min(
+            candidates,
+            key=lambda tower: (
+                tower.request.position.distance_to(position),
+                tower.identifier,
+            ),
+        )
+
+    @staticmethod
+    def _contains_visible_tower(tower: TowerRuntime, position) -> bool:
+        origin = tower.request.position
+        return (
+            origin.x - _TOWER_CLICK_HALF_WIDTH <= position.x <= origin.x + _TOWER_CLICK_HALF_WIDTH
+            and origin.y - _TOWER_CLICK_TOP_OFFSET <= position.y <= origin.y + _TOWER_CLICK_BOTTOM_OFFSET
+        )
+
     @staticmethod
     def _find_target(
         tower: TowerRuntime,
@@ -194,9 +267,8 @@ class TowerSystem:
         if not valid:
             return None
 
-        # EnemySystem already provides the enemies in their game order.
-        # The default priority therefore uses the first valid item exactly as
-        # it appears in that tuple, rather than the nearest or the last one.
+        # EnemySystem provides enemies in their route order. The default
+        # priority uses the first valid item exactly as it appears in that tuple.
         if tower.priority == TargetPriority.FIRST:
             return valid[0]
 
@@ -230,10 +302,17 @@ class TowerSystem:
 
     @staticmethod
     def _to_view(tower: TowerRuntime) -> TowerView:
+        stats = stats_for(tower.kind, 1)
         return TowerView(
             identifier=tower.identifier,
             kind=tower.kind,
             position=tower.request.position,
             cell=tower.request.cell,
             cooldown_remaining=tower.cooldown_remaining,
+            level=tower.level,
+            damage=stats.damage,
+            attack_range=stats.attack_range,
+            attacks_per_second=stats.attacks_per_second,
+            attack_type=stats.attack_type.value,
+            upgrade_cost=tower_upgrade_cost(tower.kind),
         )

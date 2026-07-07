@@ -36,6 +36,9 @@ class UiActionKind(str, Enum):
     PAUSE = "pause"
     RESUME = "resume"
     RESTART = "restart"
+    UPGRADE_TOWER = "upgrade_tower"
+    REMOVE_TOWER = "remove_tower"
+    CLOSE_TOWER_MENU = "close_tower_menu"
 
 
 class GameEventKind(str, Enum):
@@ -103,6 +106,35 @@ TOWER_DEFINITIONS: dict[TowerKind, TowerDefinition] = {
         asset_key="archer_3",
     ),
 }
+
+
+TOWER_UPGRADE_PATH: dict[TowerKind, TowerKind] = {
+    TowerKind.ARCHER_1: TowerKind.ARCHER_2,
+    TowerKind.ARCHER_2: TowerKind.ARCHER_3,
+}
+
+# These are the additional payments for the next level. The original build
+# cost still comes from TOWER_DEFINITIONS[ARCHER_1].cost.
+TOWER_UPGRADE_COSTS: dict[TowerKind, int] = {
+    TowerKind.ARCHER_1: 70,
+    TowerKind.ARCHER_2: 110,
+}
+
+
+def next_tower_kind(kind: TowerKind) -> TowerKind | None:
+    return TOWER_UPGRADE_PATH.get(kind)
+
+
+def tower_upgrade_cost(kind: TowerKind) -> int | None:
+    return TOWER_UPGRADE_COSTS.get(kind)
+
+
+def tower_level(kind: TowerKind) -> int:
+    return {
+        TowerKind.ARCHER_1: 1,
+        TowerKind.ARCHER_2: 2,
+        TowerKind.ARCHER_3: 3,
+    }[kind]
 
 
 @dataclass(frozen=True, slots=True)
@@ -211,6 +243,16 @@ class TowerView:
     position: Vector2
     cell: GridCell
     cooldown_remaining: float
+    level: int = 1
+    damage: int = 0
+    attack_range: float = 0.0
+    attacks_per_second: float = 0.0
+    attack_type: str = "single"
+    upgrade_cost: int | None = None
+
+    @property
+    def can_upgrade(self) -> bool:
+        return self.upgrade_cost is not None
 
 
 @dataclass(frozen=True, slots=True)
