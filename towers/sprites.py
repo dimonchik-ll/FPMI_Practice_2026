@@ -4,7 +4,12 @@ from math import atan2, degrees
 from pathlib import Path
 from typing import Any
 
-from shared.asset_manifest import ARROW_SHEET, TOWER_IDLE_ASSETS, TOWER_UNIT_SHEETS
+from shared.asset_manifest import (
+    ARROW_SHEET,
+    TOWER_IDLE_ASSETS,
+    TOWER_IDLE_FALLBACK_ASSETS,
+    TOWER_UNIT_SHEETS,
+)
 from shared.contracts import TowerKind
 from shared.assets import load_image
 from towers.models import Facing, Projectile, TowerRuntime
@@ -21,12 +26,17 @@ _ARROW_SOURCE_OFFSET = -90.0
 # archer must use an individual platform anchor for every tower type.
 #
 # These values are measured from the lower anchor of the tower base upward.
-# Keep ARCHER_2 at 48: it is the reference height used by the original asset.
+# Values are measured per base sheet, so every upgrade level has its own anchor.
 _BASE_BOTTOM_OFFSET_Y = 32
 _UNIT_PLATFORM_RISE_FROM_BASE_BOTTOM: dict[TowerKind, int] = {
     TowerKind.ARCHER_1: 30,
-    TowerKind.ARCHER_2: 48,
+    TowerKind.ARCHER_2: 40,
     TowerKind.ARCHER_3: 50,
+    TowerKind.ARCHER_4: 82,
+    TowerKind.ARCHER_5: 84,
+    TowerKind.ARCHER_6: 90,
+    TowerKind.ARCHER_7: 94,
+    TowerKind.ARCHER_8: 94,
 }
 _DEFAULT_UNIT_PLATFORM_RISE = 48
 
@@ -86,7 +96,7 @@ class TowerRenderer:
         pygame.draw.line(surface, (244, 218, 130), (x, y), (end_x, end_y), 2)
 
     def _load_base_frame(self, tower: TowerRuntime) -> Any | None:
-        sheet = load_image(TOWER_IDLE_ASSETS[tower.kind])
+        sheet = self._load_base_sheet(tower.kind)
         if sheet is None:
             return None
 
@@ -106,6 +116,21 @@ class TowerRenderer:
         if frame is not None:
             self._base_frames[cache_key] = frame
         return frame
+
+    @staticmethod
+    def _load_base_sheet(kind: TowerKind) -> Any | None:
+        """Loads a level's base sheet with a visual fallback for level VIII.
+
+        The current asset archive includes archer_1.png through archer_7.png.
+        When archer_8.png is later added, it will be used automatically. Until
+        then level VIII keeps working and displays the final available model.
+        """
+        sheet = load_image(TOWER_IDLE_ASSETS[kind])
+        if sheet is not None:
+            return sheet
+
+        fallback = TOWER_IDLE_FALLBACK_ASSETS.get(kind)
+        return None if fallback is None else load_image(fallback)
 
     def _load_unit_frame(self, tower: TowerRuntime) -> Any | None:
         sheet, is_attacking, flip_x = self._load_unit_sheet(tower)

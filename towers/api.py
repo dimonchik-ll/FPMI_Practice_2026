@@ -34,14 +34,14 @@ class TowerSystem:
     def build(self, request: BuildRequest) -> TowerView:
         """Builds only the initial archer level.
 
-        Archer II and Archer III are upgrades of an existing tower. Keeping the
-        guard here prevents bypassing the UI by creating a high-level tower
-        directly from integration code.
+        Levels II–VIII are upgrades of an existing tower. Keeping the guard
+        here prevents bypassing the UI by creating a high-level tower directly
+        from integration code.
         """
         if request.tower_kind != _INITIAL_BUILD_KIND:
             raise ValueError(
                 "Можно построить только Лучника I. "
-                "Лучники II и III получаются через улучшение."
+                "Лучники II–VIII получаются через улучшение."
             )
 
         archetype = ARCHETYPES[request.tower_kind]
@@ -160,7 +160,7 @@ class TowerSystem:
         return tower_upgrade_cost(tower.kind)
 
     def upgrade(self, tower_identifier: str) -> bool:
-        """Upgrades Archer I → Archer II → Archer III.
+        """Upgrades a tower by one step from Archer I to Archer VIII.
 
         The tower keeps its identifier and build cell, while its asset, attack
         type and base statistics switch to the next TowerKind.

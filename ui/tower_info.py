@@ -9,8 +9,13 @@ from ui.widgets import draw_text, ellipsize, wrap_text
 
 _TOWER_HINTS: dict[TowerKind, str] = {
     TowerKind.ARCHER_1: "Дешёвая и быстрая башня для первых волн.",
-    TowerKind.ARCHER_2: "Улучшенный лучник для середины маршрута.",
-    TowerKind.ARCHER_3: "Сильная дальнобойная башня для сложных волн.",
+    TowerKind.ARCHER_2: "Пробивающая стрела задевает двух врагов подряд.",
+    TowerKind.ARCHER_3: "Первый уровень атаки по области.",
+    TowerKind.ARCHER_4: "Увеличенный радиус взрыва для плотных волн.",
+    TowerKind.ARCHER_5: "Сильная башня по области для середины игры.",
+    TowerKind.ARCHER_6: "Большой урон и широкий радиус взрыва.",
+    TowerKind.ARCHER_7: "Элитный лучник для самых сложных волн.",
+    TowerKind.ARCHER_8: "Максимальный уровень: огромный урон и дальность.",
 }
 
 
@@ -160,7 +165,7 @@ class TowerInfoPanel:
 
         return (
             definition.title,
-            _TOWER_HINTS[tower_kind],
+            _TOWER_HINTS.get(tower_kind, "Башня с улучшенными характеристиками."),
             footer,
             footer_color,
         )

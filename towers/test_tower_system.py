@@ -42,37 +42,40 @@ def build_upgraded(towers: TowerSystem, level: int):
 def test_only_archer_i_can_be_built_directly() -> None:
     towers = TowerSystem()
 
-    with pytest.raises(ValueError):
-        towers.build(
-            BuildRequest(TowerKind.ARCHER_2, (1, 1), Vector2(0.0, 0.0))
-        )
+    for tower_kind in TowerKind:
+        if tower_kind == TowerKind.ARCHER_1:
+            continue
+        with pytest.raises(ValueError):
+            towers.build(BuildRequest(tower_kind, (1, 1), Vector2(0.0, 0.0)))
 
 
 def test_upgrade_changes_tower_kind_and_exposes_next_upgrade_cost() -> None:
     towers = TowerSystem()
     tower = build(towers)
 
-    first = towers.tower_at_cell((1, 1))
-    assert first is not None
-    assert first.kind == TowerKind.ARCHER_1
-    assert first.level == 1
-    assert first.upgrade_cost == 70
+    expected = (
+        (TowerKind.ARCHER_1, 1, "single", 70),
+        (TowerKind.ARCHER_2, 2, "piercing", 110),
+        (TowerKind.ARCHER_3, 3, "splash", 155),
+        (TowerKind.ARCHER_4, 4, "splash", 210),
+        (TowerKind.ARCHER_5, 5, "splash", 280),
+        (TowerKind.ARCHER_6, 6, "splash", 365),
+        (TowerKind.ARCHER_7, 7, "splash", 470),
+        (TowerKind.ARCHER_8, 8, "splash", None),
+    )
 
-    assert towers.upgrade(tower.identifier)
-    second = towers.tower_at_cell((1, 1))
-    assert second is not None
-    assert second.kind == TowerKind.ARCHER_2
-    assert second.level == 2
-    assert second.attack_type == "piercing"
-    assert second.upgrade_cost == 110
+    for index, (kind, level, attack_type, upgrade_cost) in enumerate(expected):
+        view = towers.tower_at_cell((1, 1))
+        assert view is not None
+        assert view.kind == kind
+        assert view.level == level
+        assert view.attack_type == attack_type
+        assert view.upgrade_cost == upgrade_cost
 
-    assert towers.upgrade(tower.identifier)
-    third = towers.tower_at_cell((1, 1))
-    assert third is not None
-    assert third.kind == TowerKind.ARCHER_3
-    assert third.level == 3
-    assert third.attack_type == "splash"
-    assert third.upgrade_cost is None
+        if index < len(expected) - 1:
+            assert towers.upgrade(tower.identifier)
+
+    assert not towers.upgrade(tower.identifier)
 
 
 def test_tower_at_position_selects_platform_not_only_cell_center() -> None:
@@ -168,8 +171,8 @@ def test_piercing_and_splash_attacks_keep_damage_commands_as_output() -> None:
     assert {command.target_id for command in commands} == {"primary", "nearby"}
 
 
-def test_upgrade_increases_damage_and_stops_at_maximum_level() -> None:
-    target = enemy("target", 100.0, 0.0, health=500)
+def test_upgrade_increases_damage_and_stops_at_level_eight() -> None:
+    target = enemy("target", 100.0, 0.0, health=5_000)
 
     base_towers = TowerSystem()
     build(base_towers)
@@ -178,9 +181,10 @@ def test_upgrade_increases_damage_and_stops_at_maximum_level() -> None:
 
     towers = TowerSystem()
     tower = build(towers)
-    assert towers.upgrade(tower.identifier)
-    assert towers.upgrade(tower.identifier)
-    assert towers.level_of(tower.identifier) == 3
+    for _ in range(7):
+        assert towers.upgrade(tower.identifier)
+
+    assert towers.level_of(tower.identifier) == 8
     assert not towers.upgrade(tower.identifier)
 
     towers.update(0.0, (target,))

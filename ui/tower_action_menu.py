@@ -9,6 +9,7 @@ from shared.contracts import (
     UiAction,
     UiActionKind,
     next_tower_kind,
+    tower_max_level,
 )
 from ui.layout import UiLayout
 from ui.theme import Color, UiFonts, UiTheme
@@ -196,7 +197,7 @@ class TowerActionMenu:
     @staticmethod
     def _stat_rows(tower: TowerView) -> tuple[tuple[str, str], ...]:
         return (
-            ("Уровень", f"{tower.level} / 3"),
+            ("Уровень", f"{tower.level} / {tower_max_level()}"),
             ("Урон", str(tower.damage)),
             ("Дальность", str(round(tower.attack_range))),
             ("Скорость", f"{tower.attacks_per_second:.1f}/с"),
