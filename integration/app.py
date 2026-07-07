@@ -90,7 +90,7 @@ class TowerDefenseApp:
             if event.button == 1:
                 self._try_build(position)
             elif event.button == 3:
-                self._try_remove_tower(position)
+                self._try_open_tower_menu(position)
 
     def _handle_ui_action(
         self,
@@ -116,8 +116,24 @@ class TowerDefenseApp:
                 return
 
             tower_kind = payload.get("tower_kind")
-            if isinstance(tower_kind, TowerKind):
+            if isinstance(tower_kind, TowerKind) and tower_kind == TowerKind.ARCHER_1:
                 self.economy.select_tower(tower_kind)
+            return
+
+        if action_kind == UiActionKind.CLOSE_TOWER_MENU:
+            self.ui.close_tower_menu()
+            return
+
+        if action_kind == UiActionKind.UPGRADE_TOWER:
+            tower_identifier = payload.get("tower_id")
+            if isinstance(tower_identifier, str):
+                self._try_upgrade_tower(tower_identifier)
+            return
+
+        if action_kind == UiActionKind.REMOVE_TOWER:
+            tower_identifier = payload.get("tower_id")
+            if isinstance(tower_identifier, str):
+                self._try_remove_tower(tower_identifier)
             return
 
         if action_kind == UiActionKind.START_WAVE:
@@ -152,7 +168,10 @@ class TowerDefenseApp:
             return
 
         tower_kind = self.economy.state.selected_tower
-        if tower_kind is None or not self.economy.can_buy(tower_kind):
+        if (
+            tower_kind != TowerKind.ARCHER_1
+            or not self.economy.can_buy(TowerKind.ARCHER_1)
+        ):
             return
 
         cell = self.map.world_to_cell(position)
@@ -169,7 +188,7 @@ class TowerDefenseApp:
 
         self.towers.build(request)
 
-    def _try_remove_tower(self, position: Vector2) -> None:
+    def _try_open_tower_menu(self, position: Vector2) -> None:
         if (
             position.x < 0
             or position.y < 0
@@ -181,11 +200,34 @@ class TowerDefenseApp:
         ):
             return
 
-        removed_tower = self.towers.remove_at_position(position)
+        tower = self.towers.tower_at_position(position)
+        if tower is None:
+            self.ui.close_tower_menu()
+            return
+
+        self.ui.open_tower_menu(tower.identifier)
+
+    def _try_upgrade_tower(self, tower_identifier: str) -> None:
+        if self.paused or self.economy.is_game_over() or self.victory:
+            return
+
+        upgrade_cost = self.towers.upgrade_cost(tower_identifier)
+        if upgrade_cost is None or not self.economy.can_afford(upgrade_cost):
+            return
+
+        if self.towers.upgrade(tower_identifier):
+            self.economy.spend(upgrade_cost)
+
+    def _try_remove_tower(self, tower_identifier: str) -> None:
+        if self.paused or self.economy.is_game_over() or self.victory:
+            return
+
+        removed_tower = self.towers.remove(tower_identifier)
         if removed_tower is None:
             return
 
         self.core.release_tower_cell(removed_tower.cell)
+        self.ui.close_tower_menu()
 
     def _update(self, delta_time: float) -> None:
         if self.paused or self.economy.is_game_over() or self.victory:

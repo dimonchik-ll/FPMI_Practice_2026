@@ -25,7 +25,8 @@ class TowerMenu(UiComponent):
         self._theme = theme
         self._fonts = fonts
 
-        self._tower_kinds = tuple(TowerKind)
+        # Higher archer tiers are available only through the tower menu.
+        self._tower_kinds = (TowerKind.ARCHER_1,)
         self._hovered_tower: TowerKind | None = None
         self._scroll_index = 0
         self._dragging_scrollbar = False
@@ -85,7 +86,7 @@ class TowerMenu(UiComponent):
 
         draw_text(
             surface,
-            "ВЫБОР БАШНИ",
+            "СТРОИТЕЛЬСТВО",
             self._fonts.section,
             (190, 216, 179),
             self._layout.tower_list_heading_position,

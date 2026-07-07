@@ -10,15 +10,20 @@ class Economy:
     def select_tower(self, tower_kind: TowerKind) -> None:
         self.state.selected_tower = tower_kind
 
+    def can_afford(self, amount: int) -> bool:
+        return amount >= 0 and self.state.money >= amount
+
+    def spend(self, amount: int) -> bool:
+        if not self.can_afford(amount):
+            return False
+        self.state.money -= amount
+        return True
+
     def can_buy(self, tower_kind: TowerKind) -> bool:
-        return self.state.money >= TOWER_DEFINITIONS[tower_kind].cost
+        return self.can_afford(TOWER_DEFINITIONS[tower_kind].cost)
 
     def buy(self, tower_kind: TowerKind) -> bool:
-        definition = TOWER_DEFINITIONS[tower_kind]
-        if self.state.money < definition.cost:
-            return False
-        self.state.money -= definition.cost
-        return True
+        return self.spend(TOWER_DEFINITIONS[tower_kind].cost)
 
     def add_reward(self, amount: int) -> None:
         self.state.money += amount

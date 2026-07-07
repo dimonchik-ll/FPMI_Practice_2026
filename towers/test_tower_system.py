@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from shared.contracts import BuildRequest, EnemyKind, EnemyView, TowerKind, Vector2
 from towers.api import TowerSystem
 from towers.models import TargetPriority
@@ -26,8 +28,61 @@ def enemy(
     )
 
 
-def build(towers: TowerSystem, kind: TowerKind = TowerKind.ARCHER_1):
-    return towers.build(BuildRequest(kind, (1, 1), Vector2(0.0, 0.0)))
+def build(towers: TowerSystem):
+    return towers.build(BuildRequest(TowerKind.ARCHER_1, (1, 1), Vector2(0.0, 0.0)))
+
+
+def build_upgraded(towers: TowerSystem, level: int):
+    tower = build(towers)
+    for _ in range(level - 1):
+        assert towers.upgrade(tower.identifier)
+    return tower
+
+
+def test_only_archer_i_can_be_built_directly() -> None:
+    towers = TowerSystem()
+
+    with pytest.raises(ValueError):
+        towers.build(
+            BuildRequest(TowerKind.ARCHER_2, (1, 1), Vector2(0.0, 0.0))
+        )
+
+
+def test_upgrade_changes_tower_kind_and_exposes_next_upgrade_cost() -> None:
+    towers = TowerSystem()
+    tower = build(towers)
+
+    first = towers.tower_at_cell((1, 1))
+    assert first is not None
+    assert first.kind == TowerKind.ARCHER_1
+    assert first.level == 1
+    assert first.upgrade_cost == 70
+
+    assert towers.upgrade(tower.identifier)
+    second = towers.tower_at_cell((1, 1))
+    assert second is not None
+    assert second.kind == TowerKind.ARCHER_2
+    assert second.level == 2
+    assert second.attack_type == "piercing"
+    assert second.upgrade_cost == 110
+
+    assert towers.upgrade(tower.identifier)
+    third = towers.tower_at_cell((1, 1))
+    assert third is not None
+    assert third.kind == TowerKind.ARCHER_3
+    assert third.level == 3
+    assert third.attack_type == "splash"
+    assert third.upgrade_cost is None
+
+
+def test_tower_at_position_selects_platform_not_only_cell_center() -> None:
+    towers = TowerSystem()
+    tower = build(towers)
+
+    selected = towers.tower_at_position(Vector2(0.0, -90.0))
+
+    assert selected is not None
+    assert selected.identifier == tower.identifier
 
 
 def test_projectile_uses_target_direction_immediately_after_spawn() -> None:
@@ -93,7 +148,7 @@ def test_priority_changes_selected_target() -> None:
 
 def test_piercing_and_splash_attacks_keep_damage_commands_as_output() -> None:
     piercing = TowerSystem()
-    build(piercing, TowerKind.ARCHER_2)
+    build_upgraded(piercing, 2)
     first = enemy("first", 80.0, 0.0)
     second = enemy("second", 110.0, 0.0)
     piercing.update(0.0, (first, second))
@@ -104,7 +159,7 @@ def test_piercing_and_splash_attacks_keep_damage_commands_as_output() -> None:
     assert second_hit == []
 
     splash = TowerSystem()
-    build(splash, TowerKind.ARCHER_3)
+    build_upgraded(splash, 3)
     primary = enemy("primary", 80.0, 0.0)
     nearby = enemy("nearby", 100.0, 0.0)
     splash.update(0.0, (primary, nearby))
@@ -191,7 +246,7 @@ def test_default_priority_targets_first_enemy_in_input_order() -> None:
 
 def test_chain_arrow_keeps_its_remaining_movement_after_first_hit() -> None:
     towers = TowerSystem()
-    build(towers, TowerKind.ARCHER_2)
+    build_upgraded(towers, 2)
     first = enemy("first", 80.0, 0.0)
     second = enemy("second", 105.0, 0.0)
 
@@ -204,7 +259,7 @@ def test_chain_arrow_keeps_its_remaining_movement_after_first_hit() -> None:
 
 def test_chain_arrow_does_not_hit_the_same_enemy_twice() -> None:
     towers = TowerSystem()
-    build(towers, TowerKind.ARCHER_2)
+    build_upgraded(towers, 2)
     first = enemy("first", 80.0, 0.0)
     second = enemy("second", 110.0, 0.0)
 
@@ -216,7 +271,7 @@ def test_chain_arrow_does_not_hit_the_same_enemy_twice() -> None:
 
 def test_splash_hits_enemy_inside_wide_radius() -> None:
     towers = TowerSystem()
-    build(towers, TowerKind.ARCHER_3)
+    build_upgraded(towers, 3)
     primary = enemy("primary", 80.0, 0.0)
     inside_radius = enemy("inside-radius", 170.0, 0.0)
     outside_radius = enemy("outside-radius", 230.0, 0.0)
