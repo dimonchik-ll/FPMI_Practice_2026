@@ -33,6 +33,9 @@ class EnemyKind(str, Enum):
 class UiActionKind(str, Enum):
     SELECT_TOWER = "select_tower"
     START_WAVE = "start_wave"
+    PAUSE = "pause"
+    RESUME = "resume"
+    RESTART = "restart"
 
 
 class GameEventKind(str, Enum):
@@ -243,3 +246,4 @@ class GameSnapshot:
     wave_is_active: bool
     game_over: bool
     victory: bool
+    paused: bool = False

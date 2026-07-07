@@ -28,7 +28,6 @@ class WaveControl(UiComponent):
             return None
 
         self._is_hovered = self._layout.start_wave_button.collidepoint(event.pos)
-
         if snapshot is None or not self._is_hovered or not self._can_start(snapshot):
             return None
 
@@ -38,13 +37,10 @@ class WaveControl(UiComponent):
         self._is_hovered = self._layout.start_wave_button.collidepoint(
             pygame.mouse.get_pos()
         )
-
         fill, border, label, text_color = self._button_state(snapshot)
         rect = self._layout.start_wave_button
-
         pygame.draw.rect(surface, fill, rect, border_radius=9)
         pygame.draw.rect(surface, border, rect, width=2, border_radius=9)
-
         draw_centered_text(
             surface,
             label,
@@ -64,7 +60,13 @@ class WaveControl(UiComponent):
                 "ИГРА ЗАВЕРШЕНА",
                 (179, 182, 186),
             )
-
+        if snapshot.paused:
+            return (
+                (66, 70, 76),
+                (108, 112, 119),
+                "ИГРА НА ПАУЗЕ",
+                (179, 182, 186),
+            )
         if snapshot.wave_is_active:
             return (
                 (66, 80, 86),
@@ -74,14 +76,13 @@ class WaveControl(UiComponent):
             )
 
         fill: Color = (85, 143, 92) if self._is_hovered else (69, 120, 78)
-
-        return (
-            fill,
-            (193, 229, 178),
-            "СТАРТ ВОЛНЫ",
-            (247, 249, 241),
-        )
+        return fill, (193, 229, 178), "СТАРТ ВОЛНЫ", (247, 249, 241)
 
     @staticmethod
     def _can_start(snapshot: GameSnapshot) -> bool:
-        return not snapshot.wave_is_active and not snapshot.game_over and not snapshot.victory
+        return (
+            not snapshot.paused
+            and not snapshot.wave_is_active
+            and not snapshot.game_over
+            and not snapshot.victory
+        )
