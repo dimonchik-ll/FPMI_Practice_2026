@@ -13,6 +13,7 @@ class AttackType(str, Enum):
 
 
 class TargetPriority(str, Enum):
+    FIRST = "first"
     NEAREST = "nearest"
     LOWEST_HEALTH = "lowest_health"
     HIGHEST_HEALTH = "highest_health"
@@ -52,7 +53,7 @@ class TowerStats:
 ARCHETYPES: dict[TowerKind, TowerArchetype] = {
     TowerKind.ARCHER_1: TowerArchetype(
         attack_type=AttackType.SINGLE,
-        default_priority=TargetPriority.NEAREST,
+        default_priority=TargetPriority.FIRST,
         projectile_speed=430.0,
         extra_pierces_by_level=(0, 0, 0),
         splash_radius_by_level=(0.0, 0.0, 0.0),
@@ -63,7 +64,7 @@ ARCHETYPES: dict[TowerKind, TowerArchetype] = {
     ),
     TowerKind.ARCHER_2: TowerArchetype(
         attack_type=AttackType.PIERCING,
-        default_priority=TargetPriority.HIGHEST_HEALTH,
+        default_priority=TargetPriority.FIRST,
         projectile_speed=370.0,
         extra_pierces_by_level=(1, 1, 2),
         splash_radius_by_level=(0.0, 0.0, 0.0),
@@ -74,10 +75,10 @@ ARCHETYPES: dict[TowerKind, TowerArchetype] = {
     ),
     TowerKind.ARCHER_3: TowerArchetype(
         attack_type=AttackType.SPLASH,
-        default_priority=TargetPriority.HIGHEST_REWARD,
+        default_priority=TargetPriority.FIRST,
         projectile_speed=330.0,
         extra_pierces_by_level=(0, 0, 0),
-        splash_radius_by_level=(38.0, 48.0, 62.0),
+        splash_radius_by_level=(96.0, 120.0, 144.0),
         splash_damage_multiplier=0.6,
         damage_multiplier_by_level=(1.0, 1.28, 1.62),
         range_multiplier_by_level=(1.0, 1.1, 1.24),
