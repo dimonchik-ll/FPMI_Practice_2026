@@ -32,11 +32,11 @@ _UNIT_PLATFORM_RISE_FROM_BASE_BOTTOM: dict[TowerKind, int] = {
     TowerKind.ARCHER_1: 30,
     TowerKind.ARCHER_2: 40,
     TowerKind.ARCHER_3: 50,
-    TowerKind.ARCHER_4: 82,
-    TowerKind.ARCHER_5: 84,
-    TowerKind.ARCHER_6: 90,
-    TowerKind.ARCHER_7: 94,
-    TowerKind.ARCHER_8: 94,
+    TowerKind.ARCHER_4: 48,
+    TowerKind.ARCHER_5: 52,
+    TowerKind.ARCHER_6: 57,
+    TowerKind.ARCHER_7: 55,
+    TowerKind.ARCHER_8: 55,
 }
 _DEFAULT_UNIT_PLATFORM_RISE = 48
 
