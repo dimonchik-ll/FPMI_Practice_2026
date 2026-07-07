@@ -18,6 +18,8 @@ class UiLayout:
     visible_tower_count: int = 3
     pause_button_height: int = 34
     start_button_height: int = 40
+    stats_panel_width: int = 400
+    stats_panel_height: int = 35
 
     @property
     def panel(self) -> pygame.Rect:
@@ -68,7 +70,12 @@ class UiLayout:
 
     @property
     def map_stats_panel(self) -> pygame.Rect:
-        return pygame.Rect(0, 0, min(self.map_width, 328), 36)
+        return pygame.Rect(
+            0,
+            0,
+            min(self.map_width, self.stats_panel_width),
+            self.stats_panel_height,
+        )
 
     def map_stat_card_rect(self, index: int) -> pygame.Rect:
         panel = self.map_stats_panel
