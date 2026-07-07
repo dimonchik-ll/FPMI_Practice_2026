@@ -6,7 +6,6 @@ import pygame
 
 from shared.contracts import BuildRequest, EnemyKind, EnemyView, TowerKind, Vector2
 from towers.api import TowerSystem
-from towers.models import TargetPriority
 
 
 WIDTH = 820
@@ -38,7 +37,7 @@ def draw_enemy(surface, enemy: EnemyView) -> None:
 def main() -> None:
     pygame.init()
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
-    pygame.display.set_caption("Towers sandbox — crisp sprites and correctly rotated arrows")
+    pygame.display.set_caption("Towers sandbox — first-target focus and reliable chain arrows")
     font = pygame.font.Font(None, 28)
     clock = pygame.time.Clock()
     max_frames = max(0, int(os.getenv("TOWERS_SANDBOX_MAX_FRAMES", "0")))
@@ -49,7 +48,6 @@ def main() -> None:
     piercing = towers.build(BuildRequest(TowerKind.ARCHER_2, (6, 5), Vector2(380, 340)))
     splash = towers.build(BuildRequest(TowerKind.ARCHER_3, (10, 5), Vector2(610, 340)))
     towers.upgrade(rapid.identifier)
-    towers.set_target_priority(piercing.identifier, TargetPriority.HIGHEST_HEALTH)
 
     enemies = [
         make_enemy("near-rapid", Vector2(245, 295), 170, 10),
@@ -66,6 +64,10 @@ def main() -> None:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
+                removed = towers.remove_at_position(Vector2(*event.pos))
+                if removed is not None:
+                    print(f"Removed {removed.identifier} from cell {removed.cell}")
 
         commands = towers.update(delta_time, tuple(enemies))
         for command in commands:
@@ -92,7 +94,7 @@ def main() -> None:
         )
         screen.blit(text, (20, 20))
         hint = font.render(
-            "Archer I: single | Archer II: piercing | Archer III: splash",
+            "Default targeting: first enemy in range | Archer II: chain | Archer III: wide splash | Right click: remove tower",
             True,
             (247, 240, 210),
         )
