@@ -3,6 +3,8 @@ from __future__ import annotations
 import pygame
 
 from core.game_shell import CoreWorld
+from core.levels import LEVEL_PATHS
+from core.map_model import GameMap
 from core.map_renderer import MapRenderer
 from enemies.api import EnemySystem, WAVE_PLANS
 from shared.contracts import (
@@ -15,26 +17,33 @@ from shared.contracts import (
 from towers.api import TowerSystem
 from ui.api import PANEL_WIDTH, UiSystem
 from ui.economy import Economy
+from ui.main_menu import (
+    MainMenu,
+    MainMenuActionKind,
+    MapMenuOption,
+)
 
 
 MAX_WAVES = max(WAVE_PLANS)
+MENU_SIZE = (1280, 720)
 
 
 class TowerDefenseApp:
-    def __init__(self) -> None:
-        pygame.init()
+    def __init__(self, level_number: int) -> None:
+        if not pygame.get_init():
+            pygame.init()
 
-        self.core = CoreWorld()
+        self.level_number = level_number
+        self.core = self._create_world()
         self.map = self.core.game_map
 
         self.screen = pygame.display.set_mode(
             (self.map.pixel_width + PANEL_WIDTH, self.map.pixel_height)
         )
-        pygame.display.set_caption("Tower Defense — Team Scaffold")
+        pygame.display.set_caption(f"Tower Defense — Карта {self.level_number}")
 
         self.clock = pygame.time.Clock()
         self.renderer = MapRenderer()
-
         self.towers = TowerSystem()
         self.enemies = EnemySystem()
         self.economy = Economy()
@@ -48,12 +57,13 @@ class TowerDefenseApp:
     def run(self) -> None:
         while self.running:
             delta_time = self.clock.tick(60) / 1000.0
-
             self._handle_events()
             self._update(delta_time)
             self._draw()
 
-        pygame.quit()
+    def _create_world(self) -> CoreWorld:
+        game_map = GameMap.create_from_level(self.level_number)
+        return CoreWorld(game_map=game_map)
 
     def _handle_events(self) -> None:
         for event in pygame.event.get():
@@ -106,9 +116,6 @@ class TowerDefenseApp:
             return
 
         if action_kind == UiActionKind.SELECT_TOWER:
-            if self.paused:
-                return
-
             tower_kind = payload.get("tower_kind")
             if isinstance(tower_kind, TowerKind):
                 self.economy.select_tower(tower_kind)
@@ -119,19 +126,18 @@ class TowerDefenseApp:
                 not self.paused
                 and not self.enemies.is_wave_active()
                 and not self.victory
+                and not self.economy.is_game_over()
             ):
-                self.enemies.start_wave(
-                    self.wave_number,
-                    self.core.route(),
-                )
+                self.enemies.start_wave(self.wave_number, self.core.route())
 
     def _restart_game(self) -> None:
-        self.core = CoreWorld()
+        self.core = self._create_world()
         self.map = self.core.game_map
 
         self.towers = TowerSystem()
         self.enemies = EnemySystem()
         self.economy = Economy()
+        self.ui = UiSystem(self.map.pixel_width, self.map.pixel_height)
 
         self.wave_number = 1
         self.victory = False
@@ -186,20 +192,15 @@ class TowerDefenseApp:
         if self.paused or self.economy.is_game_over() or self.victory:
             return
 
-        damage_commands = self.towers.update(
-            delta_time,
-            self.enemies.views(),
-        )
+        damage_commands = self.towers.update(delta_time, self.enemies.views())
         events = self.enemies.apply_damage(damage_commands)
         events.extend(self.enemies.update(delta_time))
 
         for event in events:
             if event.kind == GameEventKind.ENEMY_DEFEATED:
                 self.economy.add_reward(int(event.payload["reward"]))
-
             elif event.kind == GameEventKind.ENEMY_REACHED_GOAL:
                 self.economy.take_base_damage(int(event.payload["damage"]))
-
             elif event.kind == GameEventKind.WAVE_COMPLETED:
                 if self.wave_number >= MAX_WAVES:
                     self.victory = True
@@ -208,7 +209,6 @@ class TowerDefenseApp:
 
     def _draw(self) -> None:
         self.screen.fill((20, 30, 25))
-
         self.renderer.draw(self.screen, self.map)
         self.enemies.draw(self.screen)
         self.towers.draw(self.screen)
@@ -228,5 +228,63 @@ class TowerDefenseApp:
         pygame.display.flip()
 
 
+def _build_menu_options() -> tuple[MapMenuOption, ...]:
+    renderer = MapRenderer()
+    options: list[MapMenuOption] = []
+
+    for level_number in sorted(LEVEL_PATHS):
+        game_map = GameMap.create_from_level(level_number)
+        preview = pygame.Surface(
+            (game_map.pixel_width, game_map.pixel_height),
+        )
+        preview.fill((20, 30, 25))
+        renderer.draw(preview, game_map)
+
+        options.append(
+            MapMenuOption(
+                level_number=level_number,
+                title=f"КАРТА {level_number}",
+                preview=preview,
+            )
+        )
+
+    return tuple(options)
+
+
+def _run_main_menu() -> int | None:
+    screen = pygame.display.set_mode(MENU_SIZE)
+    pygame.display.set_caption("Tower Defense")
+
+    menu = MainMenu(screen.get_size(), _build_menu_options())
+    clock = pygame.time.Clock()
+
+    while True:
+        clock.tick(60)
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return None
+
+            action = menu.handle_event(event)
+            if action is None:
+                continue
+
+            if action.kind == MainMenuActionKind.QUIT:
+                return None
+
+            if action.kind == MainMenuActionKind.START_GAME:
+                return action.level_number
+
+        menu.draw(screen)
+        pygame.display.flip()
+
+
 def run() -> None:
-    TowerDefenseApp().run()
+    pygame.init()
+
+    try:
+        selected_level = _run_main_menu()
+        if selected_level is not None:
+            TowerDefenseApp(selected_level).run()
+    finally:
+        pygame.quit()
