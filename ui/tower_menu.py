@@ -83,6 +83,14 @@ class TowerMenu(UiComponent):
     def draw(self, surface: pygame.Surface, snapshot: GameSnapshot) -> None:
         self._update_hover(pygame.mouse.get_pos())
 
+        draw_text(
+            surface,
+            "ВЫБОР БАШНИ",
+            self._fonts.section,
+            (190, 216, 179),
+            self._layout.tower_list_heading_position,
+        )
+
         self._tower_info.draw(
             surface,
             snapshot,

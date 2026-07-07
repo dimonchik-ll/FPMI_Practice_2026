@@ -32,7 +32,17 @@ class UiTheme:
 
 class UiFonts:
     def __init__(self) -> None:
-        self.title = pygame.font.Font(None, 32)
-        self.section = pygame.font.Font(None, 24)
-        self.body = pygame.font.Font(None, 22)
-        self.small = pygame.font.Font(None, 18)
+        self.title = self._make_font(32, bold=True)
+        self.section = self._make_font(24, bold=True)
+        self.body = self._make_font(22)
+        self.small = self._make_font(18)
+
+    @staticmethod
+    def _make_font(size: int, bold: bool = False) -> pygame.font.Font:
+        for font_name in ("tahoma", "verdana", "segoeui", "arial"):
+            font_path = pygame.font.match_font(font_name, bold=bold)
+
+            if font_path is not None:
+                return pygame.font.Font(font_path, size)
+
+        return pygame.font.Font(None, size)

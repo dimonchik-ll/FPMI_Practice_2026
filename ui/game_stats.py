@@ -90,7 +90,7 @@ class GameStatsPanel(UiComponent):
         color: Color,
     ) -> None:
         dot_x = rect.x + 8
-        text_y = rect.y + 12
+        text_y = rect.y + 5
 
         pygame.draw.circle(
             surface,
