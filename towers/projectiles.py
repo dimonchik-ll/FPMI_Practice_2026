@@ -108,6 +108,16 @@ class ProjectileSystem:
         self._projectiles = remaining_projectiles
         return commands
 
+    def discard_from_source(self, source_id: str) -> int:
+        """Удаляет снаряды башни, которая была продана или уничтожена."""
+        before = len(self._projectiles)
+        self._projectiles = [
+            projectile
+            for projectile in self._projectiles
+            if projectile.source_id != source_id
+        ]
+        return before - len(self._projectiles)
+
     def projectiles(self) -> tuple[Projectile, ...]:
         return tuple(self._projectiles)
 

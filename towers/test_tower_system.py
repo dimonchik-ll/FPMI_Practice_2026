@@ -132,3 +132,46 @@ def test_upgrade_increases_damage_and_stops_at_maximum_level() -> None:
     upgraded_damage = towers.update(0.5, (target,))[0].amount
 
     assert upgraded_damage > base_damage
+
+
+def test_remove_deletes_tower_and_cancels_its_projectile() -> None:
+    towers = TowerSystem()
+    tower = build(towers)
+    target = enemy("target", 100.0, 0.0)
+
+    towers.update(0.0, (target,))
+    assert towers.projectile_count() == 1
+
+    removed = towers.remove(tower.identifier)
+
+    assert removed is not None
+    assert removed.identifier == tower.identifier
+    assert towers.views() == ()
+    assert towers.projectile_count() == 0
+    assert towers.update(1.0, (target,)) == []
+
+
+def test_remove_at_cell_returns_removed_tower_and_rejects_missing_cell() -> None:
+    towers = TowerSystem()
+    first = towers.build(BuildRequest(TowerKind.ARCHER_1, (1, 1), Vector2(20.0, 20.0)))
+    towers.build(BuildRequest(TowerKind.ARCHER_1, (2, 1), Vector2(80.0, 20.0)))
+
+    assert towers.tower_at_cell((1, 1)) == first
+    removed = towers.remove_at_cell((1, 1))
+
+    assert removed == first
+    assert towers.tower_at_cell((1, 1)) is None
+    assert [view.identifier for view in towers.views()] == ["tower-2"]
+    assert towers.remove_at_cell((1, 1)) is None
+
+
+def test_remove_at_position_uses_nearest_tower_inside_radius() -> None:
+    towers = TowerSystem()
+    first = towers.build(BuildRequest(TowerKind.ARCHER_1, (1, 1), Vector2(20.0, 20.0)))
+    second = towers.build(BuildRequest(TowerKind.ARCHER_1, (2, 1), Vector2(70.0, 20.0)))
+
+    removed = towers.remove_at_position(Vector2(60.0, 20.0), radius=20.0)
+
+    assert removed == second
+    assert [view.identifier for view in towers.views()] == [first.identifier]
+    assert towers.remove_at_position(Vector2(300.0, 300.0)) is None

@@ -67,6 +67,66 @@ class TowerSystem:
 
         return damage_commands
 
+    def remove(self, tower_identifier: str) -> TowerView | None:
+        """Удаляет башню по идентификатору и отменяет все её снаряды.
+
+        Возвращает снимок удалённой башни. По нему интеграция может
+        освободить соответствующую клетку карты и, при необходимости,
+        вернуть игроку часть стоимости.
+        """
+        for index, tower in enumerate(self._towers):
+            if tower.identifier != tower_identifier:
+                continue
+
+            removed = self._towers.pop(index)
+            self._projectiles.discard_from_source(removed.identifier)
+            return self._to_view(removed)
+        return None
+
+    def remove_at_cell(self, cell: tuple[int, int]) -> TowerView | None:
+        """Удаляет башню, установленную на указанной клетке."""
+        for tower in self._towers:
+            if tower.request.cell == cell:
+                return self.remove(tower.identifier)
+        return None
+
+    def remove_at_position(
+        self,
+        position,
+        *,
+        radius: float = 42.0,
+    ) -> TowerView | None:
+        """Удаляет ближайшую башню в радиусе клика.
+
+        Метод удобен для обработки правой кнопки мыши. Для игрового
+        состояния лучше использовать возвращаемый ``TowerView.cell``
+        и освободить слот в ``CoreWorld``.
+        """
+        safe_radius = max(0.0, radius)
+        candidates = [
+            tower
+            for tower in self._towers
+            if tower.request.position.distance_to(position) <= safe_radius
+        ]
+        if not candidates:
+            return None
+
+        nearest = min(
+            candidates,
+            key=lambda tower: (
+                tower.request.position.distance_to(position),
+                tower.identifier,
+            ),
+        )
+        return self.remove(nearest.identifier)
+
+    def tower_at_cell(self, cell: tuple[int, int]) -> TowerView | None:
+        """Возвращает башню на клетке, не изменяя игровое состояние."""
+        for tower in self._towers:
+            if tower.request.cell == cell:
+                return self._to_view(tower)
+        return None
+
     def upgrade(self, tower_identifier: str) -> bool:
         tower = self._tower_by_id(tower_identifier)
         if tower is None:

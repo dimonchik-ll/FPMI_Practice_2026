@@ -66,6 +66,10 @@ def main() -> None:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
+                removed = towers.remove_at_position(Vector2(*event.pos))
+                if removed is not None:
+                    print(f"Removed {removed.identifier} from cell {removed.cell}")
 
         commands = towers.update(delta_time, tuple(enemies))
         for command in commands:
@@ -92,7 +96,7 @@ def main() -> None:
         )
         screen.blit(text, (20, 20))
         hint = font.render(
-            "Archer I: single | Archer II: piercing | Archer III: splash",
+            "Archer I: single | Archer II: piercing | Archer III: splash | Right click: remove tower",
             True,
             (247, 240, 210),
         )
