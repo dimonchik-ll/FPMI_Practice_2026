@@ -16,6 +16,7 @@ class CoreWorld:
     def create_build_request(self, cell: GridCell, tower_kind) -> BuildRequest | None:
         if not self.game_map.is_buildable(cell):
             return None
+
         return BuildRequest(
             tower_kind=tower_kind,
             cell=cell,
@@ -26,4 +27,8 @@ class CoreWorld:
         return self.game_map.occupy(cell)
 
     def cancel_build(self, cell: GridCell) -> None:
+        self.game_map.release(cell)
+
+    def release_tower_cell(self, cell: GridCell) -> None:
+        """Освобождает слот или всю build zone удалённой башни."""
         self.game_map.release(cell)

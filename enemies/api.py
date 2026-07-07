@@ -40,6 +40,13 @@ WAVE_PLANS: dict[int, tuple[EnemyKind, ...]] = {
 }
 
 
+class Facing(str, Enum):
+    UP = "up"
+    DOWN = "down"
+    LEFT = "left"
+    RIGHT = "right"
+
+
 class _EnemyState(str, Enum):
     WALKING = "walk"
     ATTACKING = "attack"
@@ -52,6 +59,12 @@ class _WaveSettings:
     health_multiplier: float
     speed_multiplier: float
     reward_multiplier: float
+
+
+@dataclass(frozen=True, slots=True)
+class _SpriteSelection:
+    path: Path
+    flip_horizontal: bool = False
 
 
 WAVE_SETTINGS: dict[int, _WaveSettings] = {
@@ -81,19 +94,11 @@ WAVE_SETTINGS: dict[int, _WaveSettings] = {
     ),
 }
 
-ANIMATION_FILES: dict[_EnemyState, tuple[str, ...]] = {
-    _EnemyState.WALKING: ("down_walk.png",),
-    _EnemyState.ATTACKING: (
-        "down_attack.png",
-        "down_special.png",
-        "attack.png",
-        "down_walk.png",
-    ),
-    _EnemyState.DYING: (
-        "down_death.png",
-        "death.png",
-        "down_walk.png",
-    ),
+ENEMY_COLORS: dict[EnemyKind, tuple[int, int, int]] = {
+    EnemyKind.ENEMY_1: (93, 186, 99),
+    EnemyKind.ENEMY_2: (194, 117, 61),
+    EnemyKind.ENEMY_3: (113, 130, 146),
+    EnemyKind.ENEMY_4: (167, 70, 90),
 }
 
 ANIMATION_FPS: dict[_EnemyState, int] = {
@@ -102,19 +107,19 @@ ANIMATION_FPS: dict[_EnemyState, int] = {
     _EnemyState.DYING: 12,
 }
 
-ENEMY_COLORS: dict[EnemyKind, tuple[int, int, int]] = {
-    EnemyKind.ENEMY_1: (93, 186, 99),
-    EnemyKind.ENEMY_2: (194, 117, 61),
-    EnemyKind.ENEMY_3: (113, 130, 146),
-    EnemyKind.ENEMY_4: (167, 70, 90),
-}
-
 GOAL_ATTACK_DURATION = 0.35
 DEATH_ANIMATION_DURATION = 0.55
+
 MIN_SPAWN_INTERVAL = 0.25
+MAX_ACTIVE_ENEMIES = 30
+MAX_ENDLESS_SPEED_MULTIPLIER = 1.80
+EPSILON = 0.0001
 
 
 def wave_plan_for(wave_number: int) -> tuple[EnemyKind, ...]:
+    if wave_number < 1:
+        raise ValueError("wave_number must be positive")
+
     if wave_number in WAVE_PLANS:
         return WAVE_PLANS[wave_number]
 
@@ -134,6 +139,9 @@ def wave_plan_for(wave_number: int) -> tuple[EnemyKind, ...]:
 
 
 def wave_settings_for(wave_number: int) -> _WaveSettings:
+    if wave_number < 1:
+        raise ValueError("wave_number must be positive")
+
     if wave_number in WAVE_SETTINGS:
         return WAVE_SETTINGS[wave_number]
 
@@ -143,11 +151,14 @@ def wave_settings_for(wave_number: int) -> _WaveSettings:
     return _WaveSettings(
         spawn_interval=max(
             MIN_SPAWN_INTERVAL,
-            base.spawn_interval - 0.035 * stage,
+            base.spawn_interval - stage * 0.035,
         ),
-        health_multiplier=base.health_multiplier * (1 + 0.14 * stage),
-        speed_multiplier=base.speed_multiplier * (1 + 0.04 * stage),
-        reward_multiplier=base.reward_multiplier * (1 + 0.10 * stage),
+        health_multiplier=base.health_multiplier * (1 + stage * 0.14),
+        speed_multiplier=min(
+            MAX_ENDLESS_SPEED_MULTIPLIER,
+            base.speed_multiplier * (1 + stage * 0.04),
+        ),
+        reward_multiplier=base.reward_multiplier * (1 + stage * 0.10),
     )
 
 
@@ -163,6 +174,8 @@ class _EnemyRuntime:
     speed: float
     reward: int
     base_damage: int
+    facing: Facing = Facing.DOWN
+    last_move_direction: Facing = Facing.DOWN
     state: _EnemyState = _EnemyState.WALKING
     animation_time: float = 0.0
     enraged: bool = False
@@ -263,8 +276,8 @@ class EnemySystem:
                 continue
 
             total_damage = sum(
-                self._reduce_damage(enemy.kind, hit)
-                for hit in hits
+                self._reduce_damage(enemy.kind, amount)
+                for amount in hits
             )
 
             enemy.health -= total_damage
@@ -306,11 +319,15 @@ class EnemySystem:
     def is_wave_active(self) -> bool:
         return self._active_wave is not None
 
-    def draw(self, surface: Any) -> None:
+    def draw(
+        self,
+        surface: Any,
+        camera_offset: Vector2 = Vector2(0.0, 0.0),
+    ) -> None:
         import pygame
 
         for enemy in self._enemies:
-            center = (int(enemy.position.x), int(enemy.position.y))
+            center = self._screen_center(enemy.position, camera_offset)
             image = self._load_animation_frame(enemy)
 
             if image is not None:
@@ -365,12 +382,17 @@ class EnemySystem:
             )
 
     def _spawn_ready_enemies(self) -> None:
-        while self._queue and self._spawn_cooldown <= 0:
+        while (
+            self._queue
+            and self._spawn_cooldown <= 0
+            and len(self._enemies) < MAX_ACTIVE_ENEMIES
+        ):
             self._spawn(self._queue.pop(0))
             self._spawn_cooldown += self._wave_settings.spawn_interval
 
     def _spawn(self, kind: EnemyKind) -> None:
         definition = ENEMY_DEFINITIONS[kind]
+        initial_facing = self._initial_facing(self._route)
 
         max_health = max(
             1,
@@ -405,6 +427,8 @@ class EnemySystem:
                 speed=speed,
                 reward=reward,
                 base_damage=definition.base_damage,
+                facing=initial_facing,
+                last_move_direction=initial_facing,
             )
         )
 
@@ -416,18 +440,34 @@ class EnemySystem:
 
         while distance_left > 0 and enemy.path_index < len(enemy.path):
             target = enemy.path[enemy.path_index]
+
+            delta_x = target.x - enemy.position.x
+            delta_y = target.y - enemy.position.y
             segment_distance = enemy.position.distance_to(target)
 
-            if distance_left >= segment_distance:
+            if segment_distance <= EPSILON:
                 enemy.position = target
                 enemy.path_index += 1
-                distance_left -= segment_distance
-            else:
+                continue
+
+            direction = _facing_from_delta(
+                delta_x,
+                delta_y,
+                enemy.last_move_direction,
+            )
+            enemy.facing = direction
+            enemy.last_move_direction = direction
+
+            if distance_left < segment_distance:
                 enemy.position = enemy.position.move_towards(
                     target,
                     distance_left,
                 )
-                distance_left = 0
+                return False
+
+            enemy.position = target
+            enemy.path_index += 1
+            distance_left -= segment_distance
 
         return enemy.path_index >= len(enemy.path)
 
@@ -454,23 +494,138 @@ class EnemySystem:
             enemy.speed *= 1.5
 
     @staticmethod
-    def _sheet_for(enemy: _EnemyRuntime) -> Path:
+    def _initial_facing(route: tuple[Vector2, ...]) -> Facing:
+        for index in range(1, len(route)):
+            previous = route[index - 1]
+            current = route[index]
+
+            delta_x = current.x - previous.x
+            delta_y = current.y - previous.y
+
+            if abs(delta_x) > EPSILON or abs(delta_y) > EPSILON:
+                return _facing_from_delta(
+                    delta_x,
+                    delta_y,
+                    Facing.DOWN,
+                )
+
+        return Facing.DOWN
+
+    @staticmethod
+    def _screen_center(
+        position: Vector2,
+        camera_offset: Vector2,
+    ) -> tuple[int, int]:
+        return (
+            int(round(position.x - camera_offset.x)),
+            int(round(position.y - camera_offset.y)),
+        )
+
+    @staticmethod
+    def _animation_selection(
+        enemy: _EnemyRuntime,
+    ) -> _SpriteSelection:
         walk_sheet = ENEMY_WALK_SHEETS[enemy.kind]
+        seen: set[tuple[str, bool]] = set()
 
-        for file_name in ANIMATION_FILES[enemy.state]:
-            candidate = walk_sheet.with_name(file_name)
+        for action in _actions_for_state(enemy.state):
+            for filename, flip_horizontal in _directional_candidates(
+                enemy.facing,
+                action,
+            ):
+                key = (filename, flip_horizontal)
 
-            if candidate.exists():
-                return candidate
+                if key in seen:
+                    continue
 
-        return walk_sheet
+                seen.add(key)
+                candidate = walk_sheet.with_name(filename)
 
-    def _load_animation_frame(self, enemy: _EnemyRuntime) -> Any | None:
-        return load_sprite_frame(
-            self._sheet_for(enemy),
+                if candidate.exists():
+                    return _SpriteSelection(
+                        path=candidate,
+                        flip_horizontal=flip_horizontal,
+                    )
+
+        return _SpriteSelection(path=walk_sheet)
+
+    @staticmethod
+    def _load_animation_frame(enemy: _EnemyRuntime) -> Any | None:
+        selection = EnemySystem._animation_selection(enemy)
+
+        frame = load_sprite_frame(
+            selection.path,
             frame_index=int(
                 enemy.animation_time * ANIMATION_FPS[enemy.state]
             ),
             frame_size=(48, 48),
             target_size=(40, 40),
         )
+
+        if frame is None:
+            return None
+
+        if selection.flip_horizontal:
+            import pygame
+
+            return pygame.transform.flip(frame, True, False)
+
+        return frame
+
+
+def _facing_from_delta(
+    delta_x: float,
+    delta_y: float,
+    fallback: Facing,
+) -> Facing:
+    if abs(delta_x) <= EPSILON and abs(delta_y) <= EPSILON:
+        return fallback
+
+    if abs(delta_x) >= abs(delta_y):
+        return Facing.RIGHT if delta_x > 0 else Facing.LEFT
+
+    return Facing.DOWN if delta_y > 0 else Facing.UP
+
+
+def _actions_for_state(state: _EnemyState) -> tuple[str, ...]:
+    if state == _EnemyState.WALKING:
+        return ("walk",)
+
+    if state == _EnemyState.ATTACKING:
+        return ("attack", "special", "walk")
+
+    return ("death", "walk")
+
+
+def _directional_candidates(
+    facing: Facing,
+    action: str,
+) -> tuple[tuple[str, bool], ...]:
+    if facing == Facing.RIGHT:
+        return (
+            (f"right_{action}.png", False),
+            (f"side_{action}.png", True),
+            (f"left_{action}.png", True),
+            (f"down_{action}.png", False),
+        )
+
+    if facing == Facing.LEFT:
+        return (
+            (f"left_{action}.png", False),
+            (f"side_{action}.png", False),
+            (f"right_{action}.png", True),
+            (f"down_{action}.png", False),
+        )
+
+    if facing == Facing.UP:
+        return (
+            (f"up_{action}.png", False),
+            (f"side_{action}.png", False),
+            (f"down_{action}.png", False),
+        )
+
+    return (
+        (f"down_{action}.png", False),
+        (f"side_{action}.png", False),
+        (f"up_{action}.png", False),
+    )
