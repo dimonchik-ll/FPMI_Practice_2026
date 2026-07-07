@@ -52,6 +52,7 @@ def main() -> None:
         f"тайл {game_map.tile_size}px, "
         f"точек маршрута: {len(game_map.build_route())}"
     )
+    print("ЛКМ — занять BuildZone, ПКМ — освободить BuildZone.")
 
     clock = pygame.time.Clock()
     renderer = MapRenderer()
@@ -62,17 +63,18 @@ def main() -> None:
             if event.type == pygame.QUIT:
                 running = False
 
-            elif (
-                event.type == pygame.MOUSEBUTTONDOWN
-                and event.button == 1
-            ):
+            elif event.type == pygame.MOUSEBUTTONDOWN:
                 row = event.pos[1] // game_map.tile_size
                 col = event.pos[0] // game_map.tile_size
-                game_map.occupy((row, col))
+                cell = (row, col)
+
+                if event.button == 1:
+                    game_map.occupy(cell)
+                elif event.button == 3:
+                    game_map.release(cell)
 
         screen.fill((25, 35, 25))
         renderer.draw(screen, game_map)
-
         pygame.display.flip()
         clock.tick(60)
 
