@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from shared.contracts import BuildRequest, DamageCommand, EnemyView, TowerView
-from towers.models import ARCHETYPES, TargetPriority, TowerRuntime, stats_for
+from towers.models import ARCHETYPES, Facing, TargetPriority, TowerRuntime, stats_for
 from towers.projectiles import ProjectileSystem
 from towers.sprites import TowerRenderer
 
@@ -42,12 +42,13 @@ class TowerSystem:
                 tower.attack_animation_remaining - delta_time,
             )
             tower.cooldown_remaining = max(0.0, tower.cooldown_remaining - delta_time)
-            if tower.cooldown_remaining > 0.0:
-                continue
 
             stats = stats_for(tower.kind, tower.level)
             target = self._find_target(tower, enemies, stats.attack_range)
-            if target is None:
+            if target is not None:
+                tower.facing = self._facing_towards(tower, target)
+
+            if tower.cooldown_remaining > 0.0 or target is None:
                 continue
 
             tower.cooldown_remaining = 1.0 / stats.attacks_per_second
@@ -212,6 +213,14 @@ class TowerSystem:
             return distance, enemy.health_ratio, enemy.identifier
 
         return min(valid, key=key)
+
+    @staticmethod
+    def _facing_towards(tower: TowerRuntime, target: EnemyView) -> Facing:
+        dx = target.position.x - tower.request.position.x
+        dy = target.position.y - tower.request.position.y
+        if abs(dx) >= abs(dy):
+            return Facing.RIGHT if dx >= 0.0 else Facing.LEFT
+        return Facing.DOWN if dy >= 0.0 else Facing.UP
 
     def _tower_by_id(self, tower_identifier: str) -> TowerRuntime | None:
         return next(
