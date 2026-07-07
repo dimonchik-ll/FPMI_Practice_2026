@@ -1,0 +1,122 @@
+diff --git a/integration/app.py b/integration/app.py
+index ac56b39..0e64d44 100644
+--- a/integration/app.py
++++ b/integration/app.py
+@@ -28,6 +28,7 @@ class TowerDefenseApp:
+         self.ui = UiSystem(self.map.pixel_width, self.map.pixel_height)
+         self.wave_number = 1
+         self.victory = False
++        self.paused = False
+         self.running = True
+ 
+     def run(self) -> None:
+@@ -47,20 +48,58 @@ class TowerDefenseApp:
+             if action is not None:
+                 self._handle_ui_action(action.kind, action.payload or {})
+                 continue
++
+             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
++                if self.ui.is_overlay_point(event.pos):
++                    continue
+                 self._try_build(Vector2(float(event.pos[0]), float(event.pos[1])))
+ 
+     def _handle_ui_action(self, action_kind: UiActionKind, payload: dict) -> None:
++        if action_kind == UiActionKind.PAUSE:
++            if not self.economy.is_game_over() and not self.victory:
++                self.paused = True
++            return
++
++        if action_kind == UiActionKind.RESUME:
++            self.paused = False
++            return
++
++        if action_kind == UiActionKind.RESTART:
++            self._restart()
++            return
++
++        if self.paused:
++            return
++
+         if action_kind == UiActionKind.SELECT_TOWER:
+             tower_kind = payload.get("tower_kind")
+             if isinstance(tower_kind, TowerKind):
+                 self.economy.select_tower(tower_kind)
+         elif action_kind == UiActionKind.START_WAVE:
+-            if not self.enemies.is_wave_active() and not self.victory:
++            if (
++                not self.enemies.is_wave_active()
++                and not self.economy.is_game_over()
++                and not self.victory
++            ):
+                 self.enemies.start_wave(self.wave_number, self.core.route())
+ 
++    def _restart(self) -> None:
++        self.core = CoreWorld()
++        self.map = self.core.game_map
++        self.towers = TowerSystem()
++        self.enemies = EnemySystem()
++        self.economy = Economy()
++        self.wave_number = 1
++        self.victory = False
++        self.paused = False
++
+     def _try_build(self, position: Vector2) -> None:
+-        if position.x >= self.map.pixel_width or self.economy.is_game_over() or self.victory:
++        if (
++            position.x >= self.map.pixel_width
++            or self.economy.is_game_over()
++            or self.victory
++            or self.paused
++        ):
+             return
+         tower_kind = self.economy.state.selected_tower
+         if tower_kind is None or not self.economy.can_buy(tower_kind):
+@@ -77,7 +116,7 @@ class TowerDefenseApp:
+         self.towers.build(request)
+ 
+     def _update(self, delta_time: float) -> None:
+-        if self.economy.is_game_over() or self.victory:
++        if self.paused or self.economy.is_game_over() or self.victory:
+             return
+         damage_commands = self.towers.update(delta_time, self.enemies.views())
+         events = self.enemies.apply_damage(damage_commands)
+@@ -106,22 +145,11 @@ class TowerDefenseApp:
+             wave_is_active=self.enemies.is_wave_active(),
+             game_over=self.economy.is_game_over(),
+             victory=self.victory,
++            paused=self.paused,
+         )
+         self.ui.draw(self.screen, snapshot)
+-        self._draw_end_state(snapshot)
+         pygame.display.flip()
+ 
+-    def _draw_end_state(self, snapshot: GameSnapshot) -> None:
+-        message = "ПОБЕДА" if snapshot.victory else "ИГРА ОКОНЧЕНА" if snapshot.game_over else None
+-        if message is None:
+-            return
+-        overlay = pygame.Surface(self.screen.get_size(), pygame.SRCALPHA)
+-        overlay.fill((0, 0, 0, 150))
+-        self.screen.blit(overlay, (0, 0))
+-        font = pygame.font.Font(None, 74)
+-        text = font.render(message, True, (248, 236, 174))
+-        self.screen.blit(text, text.get_rect(center=self.screen.get_rect().center))
+-
+ 
+ def run() -> None:
+     TowerDefenseApp().run()
+diff --git a/shared/contracts.py b/shared/contracts.py
+index 850fbf8..8b458e0 100644
+--- a/shared/contracts.py
++++ b/shared/contracts.py
+@@ -24,4 +24,7 @@ class UiActionKind(str, Enum):
+     SELECT_TOWER = "select_tower"
+     START_WAVE = "start_wave"
++    PAUSE = "pause"
++    RESUME = "resume"
++    RESTART = "restart"
+ 
+ 
+@@ -45,2 +48,3 @@ class GameSnapshot:
+     game_over: bool
+     victory: bool
++    paused: bool = False

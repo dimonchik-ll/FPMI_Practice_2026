@@ -23,25 +23,32 @@ MAX_WAVES = max(WAVE_PLANS)
 class TowerDefenseApp:
     def __init__(self) -> None:
         pygame.init()
+
         self.core = CoreWorld()
         self.map = self.core.game_map
+
         self.screen = pygame.display.set_mode(
             (self.map.pixel_width + PANEL_WIDTH, self.map.pixel_height)
         )
         pygame.display.set_caption("Tower Defense — Team Scaffold")
+
         self.clock = pygame.time.Clock()
         self.renderer = MapRenderer()
+
         self.towers = TowerSystem()
         self.enemies = EnemySystem()
         self.economy = Economy()
         self.ui = UiSystem(self.map.pixel_width, self.map.pixel_height)
+
         self.wave_number = 1
         self.victory = False
+        self.paused = False
         self.running = True
 
     def run(self) -> None:
         while self.running:
             delta_time = self.clock.tick(60) / 1000.0
+
             self._handle_events()
             self._update(delta_time)
             self._draw()
@@ -54,6 +61,14 @@ class TowerDefenseApp:
                 self.running = False
                 continue
 
+            action = self.ui.handle_event(event)
+            if action is not None:
+                self._handle_ui_action(action.kind, action.payload or {})
+                continue
+
+            if self.paused:
+                continue
+
             if (
                 event.type == pygame.MOUSEBUTTONDOWN
                 and event.button == 1
@@ -61,32 +76,71 @@ class TowerDefenseApp:
             ):
                 continue
 
-            action = self.ui.handle_event(event)
-            if action is not None:
-                self._handle_ui_action(action.kind, action.payload or {})
-                continue
-
             if event.type != pygame.MOUSEBUTTONDOWN:
                 continue
 
             position = Vector2(float(event.pos[0]), float(event.pos[1]))
+
             if event.button == 1:
                 self._try_build(position)
             elif event.button == 3:
                 self._try_remove_tower(position)
 
-    def _handle_ui_action(self, action_kind: UiActionKind, payload: dict) -> None:
+    def _handle_ui_action(
+        self,
+        action_kind: UiActionKind,
+        payload: dict,
+    ) -> None:
+        if action_kind == UiActionKind.PAUSE:
+            if not self.economy.is_game_over() and not self.victory:
+                self.paused = True
+            return
+
+        if action_kind == UiActionKind.RESUME:
+            if not self.economy.is_game_over() and not self.victory:
+                self.paused = False
+            return
+
+        if action_kind == UiActionKind.RESTART:
+            self._restart_game()
+            return
+
         if action_kind == UiActionKind.SELECT_TOWER:
+            if self.paused:
+                return
+
             tower_kind = payload.get("tower_kind")
             if isinstance(tower_kind, TowerKind):
                 self.economy.select_tower(tower_kind)
-        elif action_kind == UiActionKind.START_WAVE:
-            if not self.enemies.is_wave_active() and not self.victory:
-                self.enemies.start_wave(self.wave_number, self.core.route())
+            return
+
+        if action_kind == UiActionKind.START_WAVE:
+            if (
+                not self.paused
+                and not self.enemies.is_wave_active()
+                and not self.victory
+            ):
+                self.enemies.start_wave(
+                    self.wave_number,
+                    self.core.route(),
+                )
+
+    def _restart_game(self) -> None:
+        self.core = CoreWorld()
+        self.map = self.core.game_map
+
+        self.towers = TowerSystem()
+        self.enemies = EnemySystem()
+        self.economy = Economy()
+
+        self.wave_number = 1
+        self.victory = False
+        self.paused = False
 
     def _try_build(self, position: Vector2) -> None:
         if (
             position.x >= self.map.pixel_width
+            or self.paused
             or self.economy.is_game_over()
             or self.victory
         ):
@@ -111,17 +165,12 @@ class TowerDefenseApp:
         self.towers.build(request)
 
     def _try_remove_tower(self, position: Vector2) -> None:
-        """Удаляет башню правой кнопкой мыши и освобождает её build zone.
-
-        TowerSystem отвечает только за башню и её снаряды. Занятость клеток
-        является состоянием карты, поэтому освобождение выполняется через
-        CoreWorld после успешного удаления башни.
-        """
         if (
             position.x < 0
             or position.y < 0
             or position.x >= self.map.pixel_width
             or position.y >= self.map.pixel_height
+            or self.paused
             or self.economy.is_game_over()
             or self.victory
         ):
@@ -134,18 +183,23 @@ class TowerDefenseApp:
         self.core.release_tower_cell(removed_tower.cell)
 
     def _update(self, delta_time: float) -> None:
-        if self.economy.is_game_over() or self.victory:
+        if self.paused or self.economy.is_game_over() or self.victory:
             return
 
-        damage_commands = self.towers.update(delta_time, self.enemies.views())
+        damage_commands = self.towers.update(
+            delta_time,
+            self.enemies.views(),
+        )
         events = self.enemies.apply_damage(damage_commands)
         events.extend(self.enemies.update(delta_time))
 
         for event in events:
             if event.kind == GameEventKind.ENEMY_DEFEATED:
                 self.economy.add_reward(int(event.payload["reward"]))
+
             elif event.kind == GameEventKind.ENEMY_REACHED_GOAL:
                 self.economy.take_base_damage(int(event.payload["damage"]))
+
             elif event.kind == GameEventKind.WAVE_COMPLETED:
                 if self.wave_number >= MAX_WAVES:
                     self.victory = True
@@ -154,6 +208,7 @@ class TowerDefenseApp:
 
     def _draw(self) -> None:
         self.screen.fill((20, 30, 25))
+
         self.renderer.draw(self.screen, self.map)
         self.enemies.draw(self.screen)
         self.towers.draw(self.screen)
@@ -166,29 +221,11 @@ class TowerDefenseApp:
             wave_is_active=self.enemies.is_wave_active(),
             game_over=self.economy.is_game_over(),
             victory=self.victory,
+            paused=self.paused,
         )
+
         self.ui.draw(self.screen, snapshot)
-        self._draw_end_state(snapshot)
         pygame.display.flip()
-
-    def _draw_end_state(self, snapshot: GameSnapshot) -> None:
-        message = (
-            "ПОБЕДА"
-            if snapshot.victory
-            else "ИГРА ОКОНЧЕНА"
-            if snapshot.game_over
-            else None
-        )
-        if message is None:
-            return
-
-        overlay = pygame.Surface(self.screen.get_size(), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 150))
-        self.screen.blit(overlay, (0, 0))
-
-        font = pygame.font.Font(None, 74)
-        text = font.render(message, True, (248, 236, 174))
-        self.screen.blit(text, text.get_rect(center=self.screen.get_rect().center))
 
 
 def run() -> None:
