@@ -51,44 +51,76 @@ class TowerDefenseApp:
                 self._handle_ui_action(action.kind, action.payload or {})
                 continue
 
-            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                if self.ui.is_overlay_point(event.pos):
-                    continue
-                self._try_build(Vector2(float(event.pos[0]), float(event.pos[1])))
+            if self.paused:
+                continue
+
+            if (
+                    event.type == pygame.MOUSEBUTTONDOWN
+                    and event.button == 1
+                    and self.ui.is_overlay_point(event.pos)
+            ):
+                continue
+
+            if event.type != pygame.MOUSEBUTTONDOWN:
+                continue
+
+            position = Vector2(float(event.pos[0]), float(event.pos[1]))
+
+            if event.button == 1:
+                self._try_build(position)
+            elif event.button == 3:
+                self._try_remove_tower(position)
 
     def _handle_ui_action(self, action_kind: UiActionKind, payload: dict) -> None:
-        if action_kind == UiActionKind.RESTART:
-            self._restart_game()
-            return
-
         if action_kind == UiActionKind.PAUSE:
-            if not self._is_game_finished():
+            if not self.economy.is_game_over() and not self.victory:
                 self.paused = True
             return
 
         if action_kind == UiActionKind.RESUME:
-            if not self._is_game_finished():
+            if not self.economy.is_game_over() and not self.victory:
                 self.paused = False
             return
 
-        if self.paused or self._is_game_finished():
+        if action_kind == UiActionKind.RESTART:
+            self._restart_game()
             return
 
         if action_kind == UiActionKind.SELECT_TOWER:
+            if self.paused:
+                return
+
             tower_kind = payload.get("tower_kind")
             if isinstance(tower_kind, TowerKind):
                 self.economy.select_tower(tower_kind)
             return
 
         if action_kind == UiActionKind.START_WAVE:
-            if not self.enemies.is_wave_active():
+            if (
+                    not self.paused
+                    and not self.enemies.is_wave_active()
+                    and not self.victory
+            ):
                 self.enemies.start_wave(self.wave_number, self.core.route())
+
+    def _restart_game(self) -> None:
+        self.core = CoreWorld()
+        self.map = self.core.game_map
+
+        self.towers = TowerSystem()
+        self.enemies = EnemySystem()
+        self.economy = Economy()
+
+        self.wave_number = 1
+        self.victory = False
+        self.paused = False
 
     def _try_build(self, position: Vector2) -> None:
         if (
             position.x >= self.map.pixel_width
             or self.paused
-            or self._is_game_finished()
+            or self.economy.is_game_over()
+            or self.victory
         ):
             return
 
@@ -111,7 +143,7 @@ class TowerDefenseApp:
         self.towers.build(request)
 
     def _update(self, delta_time: float) -> None:
-        if self.paused or self._is_game_finished():
+        if self.paused or self.economy.is_game_over() or self.victory:
             return
 
         damage_commands = self.towers.update(delta_time, self.enemies.views())
@@ -145,6 +177,7 @@ class TowerDefenseApp:
             victory=self.victory,
             paused=self.paused,
         )
+        
         self.ui.draw(self.screen, snapshot)
         pygame.display.flip()
 
@@ -166,6 +199,7 @@ class TowerDefenseApp:
         self.wave_number = 1
         self.victory = False
         self.paused = False
+        self.running = True
 
     def _is_game_finished(self) -> bool:
         return self.economy.is_game_over() or self.victory
