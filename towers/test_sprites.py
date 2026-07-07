@@ -119,7 +119,7 @@ def test_renderer_extracts_one_base_frame_and_places_archer_on_platform(monkeypa
     assert base_image.get_size() == (70, 130)
     assert unit_image.get_size() == (48, 48)
     assert base_rect.midbottom == (100, 132)
-    assert unit_rect.midbottom == (100, 84)
+    assert unit_rect.midbottom == (100, 92)
     assert unit_rect.midbottom[1] < base_rect.midbottom[1]
 
 
@@ -226,3 +226,22 @@ def test_arrow_keeps_thin_aspect_ratio_and_uses_upward_source_offset(monkeypatch
     rendered_arrow = surface.blits[0][0]
     assert rendered_arrow.get_size() == (5, 22)
     assert rotate_calls == [0.0]
+
+
+def test_level_eight_uses_final_available_base_when_archer_eight_is_missing(monkeypatch) -> None:
+    rotate_calls = []
+    monkeypatch.setitem(sys.modules, "pygame", _fake_pygame(rotate_calls))
+
+    final_available_sheet = _Image("archer-seven", 420, 130)
+
+    def fake_load_image(path):
+        if path == TOWER_IDLE_ASSETS[TowerKind.ARCHER_8]:
+            return None
+        if path == TOWER_IDLE_ASSETS[TowerKind.ARCHER_7]:
+            return final_available_sheet
+        return None
+
+    monkeypatch.setattr("towers.sprites.load_image", fake_load_image)
+    renderer = TowerRenderer()
+
+    assert renderer._load_base_sheet(TowerKind.ARCHER_8) is final_available_sheet

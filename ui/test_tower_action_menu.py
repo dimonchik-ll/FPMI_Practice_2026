@@ -109,3 +109,11 @@ def test_menu_closes_when_selected_tower_disappears() -> None:
     action_menu.sync(snapshot())
 
     assert not action_menu.is_open
+
+
+def test_stat_rows_show_eight_as_the_maximum_level() -> None:
+    rows = TowerActionMenu._stat_rows(
+        tower_view(kind=TowerKind.ARCHER_8, level=8, upgrade_cost=None)
+    )
+
+    assert ("Уровень", "8 / 8") in rows

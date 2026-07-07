@@ -23,50 +23,38 @@ TILE_ASSETS = {
     ),
 }
 
+
 TOWER_IDLE_ASSETS = {
-    TowerKind.ARCHER_1: asset_path(
-        "tiles",
-        "towers",
-        "idle",
-        "archer_1.png",
-    ),
-    TowerKind.ARCHER_2: asset_path(
-        "tiles",
-        "towers",
-        "idle",
-        "archer_3.png",
-    ),
-    TowerKind.ARCHER_3: asset_path(
-        "tiles",
-        "towers",
-        "idle",
-        "archer_5.png",
-    ),
+    TowerKind.ARCHER_1: asset_path("tiles", "towers", "idle", "archer_1.png"),
+    TowerKind.ARCHER_2: asset_path("tiles", "towers", "idle", "archer_2.png"),
+    TowerKind.ARCHER_3: asset_path("tiles", "towers", "idle", "archer_3.png"),
+    TowerKind.ARCHER_4: asset_path("tiles", "towers", "idle", "archer_4.png"),
+    TowerKind.ARCHER_5: asset_path("tiles", "towers", "idle", "archer_5.png"),
+    TowerKind.ARCHER_6: asset_path("tiles", "towers", "idle", "archer_6.png"),
+    TowerKind.ARCHER_7: asset_path("tiles", "towers", "idle", "archer_7.png"),
+    # The code loads this file automatically if it is present in the asset pack.
+    TowerKind.ARCHER_8: asset_path("tiles", "towers", "idle", "archer_8.png"),
 }
 
-TOWER_UNIT_SHEETS = {
-    TowerKind.ARCHER_1: asset_path(
-        "tiles",
-        "towers",
-        "units",
-        "archer_1",
-        "down_idle.png",
-    ),
-    TowerKind.ARCHER_2: asset_path(
-        "tiles",
-        "towers",
-        "units",
-        "archer_2",
-        "down_idle.png",
-    ),
-    TowerKind.ARCHER_3: asset_path(
-        "tiles",
-        "towers",
-        "units",
-        "archer_3",
-        "down_idle.png",
-    ),
+# The delivered archive currently contains idle/archer_1.png … archer_7.png.
+# Level VIII uses the final available model only while archer_8.png is absent.
+TOWER_IDLE_FALLBACK_ASSETS = {
+    TowerKind.ARCHER_8: TOWER_IDLE_ASSETS[TowerKind.ARCHER_7],
 }
+
+# There are three archer character sets. Higher architectural levels reuse the
+# strongest available archer set while their base model changes every level.
+TOWER_UNIT_SHEETS = {
+    TowerKind.ARCHER_1: asset_path("tiles", "towers", "units", "archer_1", "down_idle.png"),
+    TowerKind.ARCHER_2: asset_path("tiles", "towers", "units", "archer_1", "down_idle.png"),
+    TowerKind.ARCHER_3: asset_path("tiles", "towers", "units", "archer_2", "down_idle.png"),
+    TowerKind.ARCHER_4: asset_path("tiles", "towers", "units", "archer_2", "down_idle.png"),
+    TowerKind.ARCHER_5: asset_path("tiles", "towers", "units", "archer_2", "down_idle.png"),
+    TowerKind.ARCHER_6: asset_path("tiles", "towers", "units", "archer_3", "down_idle.png"),
+    TowerKind.ARCHER_7: asset_path("tiles", "towers", "units", "archer_3", "down_idle.png"),
+    TowerKind.ARCHER_8: asset_path("tiles", "towers", "units", "archer_3", "down_idle.png"),
+}
+
 
 ENEMY_WALK_SHEETS = {
     EnemyKind.ENEMY_1: asset_path(
