@@ -43,7 +43,7 @@ class TowerInfoPanel:
 
         draw_text(
             surface,
-            "ВЫБОР БАШНИ",
+            "ИНФОРМАЦИЯ",
             self._fonts.section,
             (190, 216, 179),
             (area.x, area.y),

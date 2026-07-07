@@ -13,6 +13,7 @@ class UiLayout:
     height: int
     margin: int = 14
     gap: int = 8
+    tower_list_heading_height: int = 30
     tower_card_height: int = 48
     visible_tower_count: int = 3
     pause_button_height: int = 34
@@ -78,21 +79,30 @@ class UiLayout:
         return pygame.Rect(x, panel.y, width, panel.height)
 
     @property
+    def tower_list_heading_position(self) -> tuple[int, int]:
+        return (
+            self.map_width + self.margin,
+            self.side_content_top,
+        )
+
+    @property
     def tower_list_viewport(self) -> pygame.Rect:
         height = (
-            self.visible_tower_count * self.tower_card_height
-            + (self.visible_tower_count - 1) * self.gap
+                self.visible_tower_count * self.tower_card_height
+                + (self.visible_tower_count - 1) * self.gap
         )
+
         return pygame.Rect(
             self.map_width + self.margin,
-            self.start_wave_button.top - self.gap - height,
+            self.side_content_top + self.tower_list_heading_height + self.gap,
             self.content_width,
             height,
         )
 
     def tower_info_area(self) -> pygame.Rect:
-        top = self.side_content_top
-        bottom = self.tower_list_viewport.top - self.gap
+        top = self.tower_list_viewport.bottom + self.gap
+        bottom = self.start_wave_button.top - self.gap
+
         return pygame.Rect(
             self.map_width + self.margin,
             top,
