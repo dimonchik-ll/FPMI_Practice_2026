@@ -21,6 +21,11 @@ class TowerKind(str, Enum):
     ARCHER_1 = "archer_1"
     ARCHER_2 = "archer_2"
     ARCHER_3 = "archer_3"
+    ARCHER_4 = "archer_4"
+    ARCHER_5 = "archer_5"
+    ARCHER_6 = "archer_6"
+    ARCHER_7 = "archer_7"
+    ARCHER_8 = "archer_8"
 
 
 class EnemyKind(str, Enum):
@@ -84,40 +89,100 @@ TOWER_DEFINITIONS: dict[TowerKind, TowerDefinition] = {
         cost=40,
         damage=12,
         attack_range=135.0,
-        attacks_per_second=1.1,
+        attacks_per_second=1.10,
         asset_key="archer_1",
     ),
     TowerKind.ARCHER_2: TowerDefinition(
         kind=TowerKind.ARCHER_2,
         title="Лучник II",
-        cost=70,
+        cost=0,
         damage=22,
         attack_range=165.0,
-        attacks_per_second=0.9,
+        attacks_per_second=0.90,
         asset_key="archer_2",
     ),
     TowerKind.ARCHER_3: TowerDefinition(
         kind=TowerKind.ARCHER_3,
         title="Лучник III",
-        cost=110,
+        cost=0,
         damage=34,
         attack_range=195.0,
         attacks_per_second=0.75,
         asset_key="archer_3",
     ),
+    TowerKind.ARCHER_4: TowerDefinition(
+        kind=TowerKind.ARCHER_4,
+        title="Лучник IV",
+        cost=0,
+        damage=46,
+        attack_range=210.0,
+        attacks_per_second=0.80,
+        asset_key="archer_4",
+    ),
+    TowerKind.ARCHER_5: TowerDefinition(
+        kind=TowerKind.ARCHER_5,
+        title="Лучник V",
+        cost=0,
+        damage=60,
+        attack_range=225.0,
+        attacks_per_second=0.85,
+        asset_key="archer_5",
+    ),
+    TowerKind.ARCHER_6: TowerDefinition(
+        kind=TowerKind.ARCHER_6,
+        title="Лучник VI",
+        cost=0,
+        damage=76,
+        attack_range=240.0,
+        attacks_per_second=0.90,
+        asset_key="archer_6",
+    ),
+    TowerKind.ARCHER_7: TowerDefinition(
+        kind=TowerKind.ARCHER_7,
+        title="Лучник VII",
+        cost=0,
+        damage=94,
+        attack_range=260.0,
+        attacks_per_second=0.95,
+        asset_key="archer_7",
+    ),
+    TowerKind.ARCHER_8: TowerDefinition(
+        kind=TowerKind.ARCHER_8,
+        title="Лучник VIII",
+        cost=0,
+        damage=118,
+        attack_range=280.0,
+        attacks_per_second=1.00,
+        asset_key="archer_8",
+    ),
 }
 
 
-TOWER_UPGRADE_PATH: dict[TowerKind, TowerKind] = {
-    TowerKind.ARCHER_1: TowerKind.ARCHER_2,
-    TowerKind.ARCHER_2: TowerKind.ARCHER_3,
-}
+TOWER_LEVELS: tuple[TowerKind, ...] = (
+    TowerKind.ARCHER_1,
+    TowerKind.ARCHER_2,
+    TowerKind.ARCHER_3,
+    TowerKind.ARCHER_4,
+    TowerKind.ARCHER_5,
+    TowerKind.ARCHER_6,
+    TowerKind.ARCHER_7,
+    TowerKind.ARCHER_8,
+)
 
-# These are the additional payments for the next level. The original build
-# cost still comes from TOWER_DEFINITIONS[ARCHER_1].cost.
+TOWER_UPGRADE_PATH: dict[TowerKind, TowerKind] = dict(
+    zip(TOWER_LEVELS, TOWER_LEVELS[1:])
+)
+
+# These are additional payments for the next level. The base construction cost
+# comes only from TOWER_DEFINITIONS[ARCHER_1].cost.
 TOWER_UPGRADE_COSTS: dict[TowerKind, int] = {
     TowerKind.ARCHER_1: 70,
     TowerKind.ARCHER_2: 110,
+    TowerKind.ARCHER_3: 155,
+    TowerKind.ARCHER_4: 210,
+    TowerKind.ARCHER_5: 280,
+    TowerKind.ARCHER_6: 365,
+    TowerKind.ARCHER_7: 470,
 }
 
 
@@ -130,11 +195,11 @@ def tower_upgrade_cost(kind: TowerKind) -> int | None:
 
 
 def tower_level(kind: TowerKind) -> int:
-    return {
-        TowerKind.ARCHER_1: 1,
-        TowerKind.ARCHER_2: 2,
-        TowerKind.ARCHER_3: 3,
-    }[kind]
+    return TOWER_LEVELS.index(kind) + 1
+
+
+def tower_max_level() -> int:
+    return len(TOWER_LEVELS)
 
 
 @dataclass(frozen=True, slots=True)
