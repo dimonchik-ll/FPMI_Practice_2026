@@ -21,6 +21,15 @@ class TargetPriority(str, Enum):
     HIGHEST_REWARD = "highest_reward"
 
 
+class Facing(str, Enum):
+    """One of the four sprite directions used by the archer PNG sheets."""
+
+    DOWN = "down"
+    LEFT = "left"
+    RIGHT = "right"
+    UP = "up"
+
+
 @dataclass(frozen=True, slots=True)
 class TowerArchetype:
     attack_type: AttackType
@@ -96,6 +105,7 @@ class TowerRuntime:
     cooldown_remaining: float = 0.0
     attack_animation_remaining: float = 0.0
     animation_time: float = 0.0
+    facing: Facing = Facing.DOWN
 
     @property
     def kind(self) -> TowerKind:

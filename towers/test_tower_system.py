@@ -225,3 +225,26 @@ def test_splash_hits_enemy_inside_wide_radius() -> None:
     commands = towers.update(0.4, (primary, inside_radius, outside_radius))
 
     assert {command.target_id for command in commands} == {"primary", "inside-radius"}
+
+
+def test_archer_turns_towards_target_before_the_next_shot() -> None:
+    towers = TowerSystem()
+    build(towers)
+    target = enemy("target", -80.0, 20.0)
+
+    towers.update(0.0, (target,))
+
+    assert towers._towers[0].facing.value == "left"
+
+
+def test_archer_facing_updates_while_its_attack_is_on_cooldown() -> None:
+    towers = TowerSystem()
+    build(towers)
+    right = enemy("right", 80.0, 0.0)
+    up = enemy("up", 0.0, -80.0)
+
+    towers.update(0.0, (right,))
+    assert towers._towers[0].facing.value == "right"
+
+    towers.update(0.05, (up,))
+    assert towers._towers[0].facing.value == "up"
