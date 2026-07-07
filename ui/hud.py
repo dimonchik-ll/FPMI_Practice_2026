@@ -20,7 +20,6 @@ class HudPanel(UiComponent):
             self._theme.panel_background,
             self._layout.panel,
         )
-
         pygame.draw.line(
             surface,
             self._theme.panel_border,
@@ -28,7 +27,6 @@ class HudPanel(UiComponent):
             (self._layout.map_width, self._layout.height),
             2,
         )
-
         self._draw_header(surface, snapshot)
 
     def _draw_header(self, surface: pygame.Surface, snapshot: GameSnapshot) -> None:
@@ -39,10 +37,8 @@ class HudPanel(UiComponent):
             self._theme.title_text,
             self._layout.title_position,
         )
-
         label, color = self._status(snapshot)
         status_rect = self._layout.status_badge_rect
-
         pygame.draw.rect(
             surface,
             color,
@@ -56,7 +52,6 @@ class HudPanel(UiComponent):
             width=1,
             border_radius=8,
         )
-
         draw_centered_text(
             surface,
             label,
@@ -69,11 +64,10 @@ class HudPanel(UiComponent):
     def _status(snapshot: GameSnapshot) -> tuple[str, Color]:
         if snapshot.game_over:
             return "ПОРАЖЕНИЕ", (215, 116, 106)
-
         if snapshot.victory:
             return "ПОБЕДА", (129, 190, 122)
-
+        if snapshot.paused:
+            return "ПАУЗА", (177, 157, 224)
         if snapshot.wave_is_active:
             return "В БОЮ", (232, 189, 93)
-
         return "ПОДГОТОВКА", (124, 176, 208)

@@ -15,11 +15,16 @@ class UiLayout:
     gap: int = 8
     tower_card_height: int = 48
     visible_tower_count: int = 3
+    pause_button_height: int = 34
     start_button_height: int = 40
 
     @property
     def panel(self) -> pygame.Rect:
         return pygame.Rect(self.map_width, 0, PANEL_WIDTH, self.height)
+
+    @property
+    def window_rect(self) -> pygame.Rect:
+        return pygame.Rect(0, 0, self.map_width + PANEL_WIDTH, self.height)
 
     @property
     def content_width(self) -> int:
@@ -39,8 +44,17 @@ class UiLayout:
         )
 
     @property
+    def pause_button(self) -> pygame.Rect:
+        return pygame.Rect(
+            self.map_width + self.margin,
+            self.status_badge_rect.bottom + self.gap,
+            self.content_width,
+            self.pause_button_height,
+        )
+
+    @property
     def side_content_top(self) -> int:
-        return self.status_badge_rect.bottom + self.gap
+        return self.pause_button.bottom + self.gap
 
     @property
     def start_wave_button(self) -> pygame.Rect:
@@ -53,31 +67,15 @@ class UiLayout:
 
     @property
     def map_stats_panel(self) -> pygame.Rect:
-        return pygame.Rect(
-            0,
-            0,
-            min(self.map_width, 328),
-            36,
-        )
+        return pygame.Rect(0, 0, min(self.map_width, 328), 36)
 
     def map_stat_card_rect(self, index: int) -> pygame.Rect:
         panel = self.map_stats_panel
         stat_count = 4
         cell_width = panel.width // stat_count
         x = panel.x + index * cell_width
-
-        width = (
-            panel.right - x
-            if index == stat_count - 1
-            else cell_width
-        )
-
-        return pygame.Rect(
-            x,
-            panel.y,
-            width,
-            panel.height,
-        )
+        width = panel.right - x if index == stat_count - 1 else cell_width
+        return pygame.Rect(x, panel.y, width, panel.height)
 
     @property
     def tower_list_viewport(self) -> pygame.Rect:
@@ -85,7 +83,6 @@ class UiLayout:
             self.visible_tower_count * self.tower_card_height
             + (self.visible_tower_count - 1) * self.gap
         )
-
         return pygame.Rect(
             self.map_width + self.margin,
             self.start_wave_button.top - self.gap - height,
@@ -96,7 +93,6 @@ class UiLayout:
     def tower_info_area(self) -> pygame.Rect:
         top = self.side_content_top
         bottom = self.tower_list_viewport.top - self.gap
-
         return pygame.Rect(
             self.map_width + self.margin,
             top,
