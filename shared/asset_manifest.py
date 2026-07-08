@@ -28,12 +28,12 @@ TOWER_IDLE_ASSETS = {
     TowerKind.ARCHER_1: asset_path("tiles", "towers", "idle", "archer_1.png"),
     TowerKind.ARCHER_2: asset_path("tiles", "towers", "idle", "archer_2.png"),
     TowerKind.ARCHER_3: asset_path("tiles", "towers", "idle", "archer_3.png"),
-    TowerKind.ARCHER_4: asset_path("tiles", "towers", "idle", "archer_4.png"),
+    TowerKind.ARCHER_4: asset_path("tiles", "towers", "idle", "archer_3.png"),
     TowerKind.ARCHER_5: asset_path("tiles", "towers", "idle", "archer_5.png"),
     TowerKind.ARCHER_6: asset_path("tiles", "towers", "idle", "archer_6.png"),
-    TowerKind.ARCHER_7: asset_path("tiles", "towers", "idle", "archer_7.png"),
+    TowerKind.ARCHER_7: asset_path("tiles", "towers", "idle", "archer_6.png"),
     # The code loads this file automatically if it is present in the asset pack.
-    TowerKind.ARCHER_8: asset_path("tiles", "towers", "idle", "archer_8.png"),
+    TowerKind.ARCHER_8: asset_path("tiles", "towers", "idle", "archer_6.png"),
 }
 
 # The delivered archive currently contains idle/archer_1.png … archer_7.png.
