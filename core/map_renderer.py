@@ -21,6 +21,7 @@ class MapRenderer:
         "Tree",
         "Camp",
         "Decor",
+        "Dirt",
     }
 
     BUILDABLE_LAYER = "Buildable"
