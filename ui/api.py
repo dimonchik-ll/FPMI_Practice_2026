@@ -5,7 +5,7 @@ import pygame
 from shared.contracts import GameSnapshot, UiAction, UiActionKind
 from ui.game_stats import GameStatsPanel
 from ui.hud import HudPanel
-from ui.layout import PANEL_WIDTH, UiLayout
+from ui.layout import HUD_SLIDE_SPEED, PANEL_WIDTH, UiLayout
 from ui.overlays import EndGameOverlay, PauseOverlay
 from ui.pause_control import PauseControl
 from ui.settings_overlay import SettingsOverlay
@@ -23,8 +23,9 @@ class UiSystem:
         layout = UiLayout(map_width, height)
         theme = UiTheme()
         fonts = UiFonts()
-
+        self._layout = layout
         self._snapshot: GameSnapshot | None = None
+        self._last_animation_ms = pygame.time.get_ticks()
         self._game_stats = GameStatsPanel(layout, theme, fonts)
         self._pause_overlay = PauseOverlay(layout, theme, fonts)
         self._settings_overlay = SettingsOverlay(layout, theme, fonts)
@@ -45,37 +46,29 @@ class UiSystem:
         self._tower_action_menu.close()
 
     def handle_event(self, event: pygame.event.Event) -> UiAction | None:
-        snapshot = self._snapshot
-
-        if snapshot is None:
+        if self._handle_hud_toggle_event(event):
             return None
 
+        snapshot = self._snapshot
+        if snapshot is None:
+            return None
         if snapshot.game_over or snapshot.victory:
             self.close_tower_menu()
             return self._end_game_overlay.handle_event(event, snapshot)
-
         if snapshot.paused:
             self.close_tower_menu()
-
             if self._settings_overlay.is_open:
                 return self._settings_overlay.handle_event(event, snapshot)
-
             action = self._pause_overlay.handle_event(event, snapshot)
-
             if action is not None and action.kind == UiActionKind.OPEN_SETTINGS:
                 self._settings_overlay.open()
                 return None
-
             return action
-
         tower_menu_action = self._tower_action_menu.handle_event(event, snapshot)
-
         if tower_menu_action is not None:
             if tower_menu_action.kind == UiActionKind.CLOSE_TOWER_MENU:
                 self.close_tower_menu()
-
             return tower_menu_action
-
         if self._tower_action_menu.is_open and event.type in (
             pygame.MOUSEBUTTONDOWN,
             pygame.MOUSEBUTTONUP,
@@ -83,38 +76,32 @@ class UiSystem:
             pygame.MOUSEWHEEL,
         ):
             return None
-
         if event.type == pygame.KEYDOWN and event.key in (pygame.K_ESCAPE, pygame.K_p):
             return UiAction(UiActionKind.PAUSE)
-
         for component in reversed(self._components):
             action = component.handle_event(event, snapshot)
-
             if action is not None:
                 return action
-
         return None
 
     def is_overlay_point(self, position: tuple[int, int]) -> bool:
         snapshot = self._snapshot
-
         if snapshot is not None and (
             snapshot.paused or snapshot.game_over or snapshot.victory
         ):
             return True
-
         return (
-            self._game_stats.contains_point(position)
+            self._layout.hud_contains_point(position)
+            or self._game_stats.contains_point(position)
             or self._tower_action_menu.contains_point(position)
         )
 
     def draw(self, surface: pygame.Surface, snapshot: GameSnapshot) -> None:
         self._snapshot = snapshot
+        self._animate_hud()
         self._tower_action_menu.sync(snapshot)
-
         for component in self._components:
             component.draw(surface, snapshot)
-
         if snapshot.game_over or snapshot.victory:
             self._end_game_overlay.draw(surface, snapshot)
         elif snapshot.paused:
@@ -124,3 +111,29 @@ class UiSystem:
                 self._pause_overlay.draw(surface, snapshot)
         else:
             self._tower_action_menu.draw(surface, snapshot)
+
+    def _handle_hud_toggle_event(self, event: pygame.event.Event) -> bool:
+        if event.type != pygame.MOUSEBUTTONDOWN or event.button != 1:
+            return False
+        if not self._layout.hud_toggle_button.collidepoint(event.pos):
+            return False
+        self._layout.hud_open = not self._layout.hud_open
+        self.close_tower_menu()
+        return True
+
+    def _animate_hud(self) -> None:
+        current_ms = pygame.time.get_ticks()
+        elapsed = max(0.0, (current_ms - self._last_animation_ms) / 1000.0)
+        self._last_animation_ms = current_ms
+
+        target_x = float(self._layout.hud_target_x)
+        current_x = self._layout.panel_x
+        distance = target_x - current_x
+        if distance == 0:
+            return
+
+        step = HUD_SLIDE_SPEED * elapsed
+        if abs(distance) <= step:
+            self._layout.panel_x = target_x
+            return
+        self._layout.panel_x += step if distance > 0 else -step
