@@ -50,6 +50,8 @@ ENEMY_DISPLAY_NAMES: dict[EnemyKind, str] = {
     EnemyKind.ENEMY_5: "Мшистый кабан",
     EnemyKind.ENEMY_6: "Бронированный жук",
     EnemyKind.ENEMY_7: "Разбойник в капюшоне",
+    EnemyKind.BOSS_1: "Лесной воевода",
+    EnemyKind.BOSS_2: "Рунный каменный титан",
 }
 
 ENEMY_SPECIAL_TRAITS: dict[EnemyKind, str] = {
@@ -60,6 +62,8 @@ ENEMY_SPECIAL_TRAITS: dict[EnemyKind, str] = {
     EnemyKind.ENEMY_5: "Таран: крепкий враг со средней скоростью",
     EnemyKind.ENEMY_6: "Панцирь: сильно снижает входящий урон",
     EnemyKind.ENEMY_7: "Ловкач: быстрый враг с малым здоровьем",
+    EnemyKind.BOSS_1: "Финальный босс уровня 1: высокий запас здоровья",
+    EnemyKind.BOSS_2: "Финальный босс уровня 2: огромный запас здоровья и броня",
 }
 
 WAVE_PLANS: dict[int, tuple[EnemyKind, ...]] = {
@@ -132,6 +136,8 @@ ENEMY_COLORS: dict[EnemyKind, tuple[int, int, int]] = {
     EnemyKind.ENEMY_5: (118, 92, 68),
     EnemyKind.ENEMY_6: (113, 155, 55),
     EnemyKind.ENEMY_7: (113, 70, 103),
+    EnemyKind.BOSS_1: (132, 58, 48),
+    EnemyKind.BOSS_2: (86, 119, 138),
 }
 
 ANIMATION_FPS: dict[_EnemyState, int] = {
@@ -239,13 +245,13 @@ class EnemySystem:
         self._active_wave: int | None = None
         self._wave_settings = WAVE_SETTINGS[1]
 
-    def start_wave(self, wave_number: int, route: tuple[Vector2, ...]) -> bool:
+    def start_wave(self, wave_number: int, route: tuple[Vector2, ...], level_number: int = 1) -> bool:
         if self._active_wave is not None or not route or wave_number < 1:
             return False
 
         self._active_wave = wave_number
         self._route = route
-        self._queue = list(wave_plan_for(wave_number))
+        self._queue = list(wave_plan_for(wave_number, level_number=level_number))
         self._wave_settings = wave_settings_for(wave_number)
         self._spawn_cooldown = 0.0
 
@@ -743,6 +749,8 @@ class EnemySystem:
             EnemyKind.ENEMY_5: 4,
             EnemyKind.ENEMY_6: 8,
             EnemyKind.ENEMY_7: 1,
+            EnemyKind.BOSS_1: 10,
+            EnemyKind.BOSS_2: 14,
         }
 
         return max(1, amount - armor_by_kind[kind])
@@ -893,3 +901,26 @@ def _directional_candidates(
         (f"side_{action}.png", False),
         (f"up_{action}.png", False),
     )
+
+
+# Final boss compatibility wrapper
+def wave_plan_for(
+    wave_number: int,
+    level_number: int = 1,
+) -> tuple[EnemyKind, ...]:
+    from enemies.waves import (
+        endless_wave_plan,
+        final_boss_wave_plan,
+        is_final_boss_wave,
+    )
+
+    if wave_number < 1:
+        raise ValueError("wave_number must be positive")
+
+    if is_final_boss_wave(wave_number):
+        return final_boss_wave_plan(level_number)
+
+    if wave_number in WAVE_PLANS:
+        return WAVE_PLANS[wave_number]
+
+    return endless_wave_plan(wave_number)

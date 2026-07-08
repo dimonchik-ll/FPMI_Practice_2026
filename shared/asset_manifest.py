@@ -115,6 +115,18 @@ ENEMY_WALK_SHEETS = {
         "enemy_7",
         "down_walk.png",
     ),
+    EnemyKind.BOSS_1: asset_path(
+        "tiles",
+        "enemies",
+        "boss_1",
+        "down_walk.png",
+    ),
+    EnemyKind.BOSS_2: asset_path(
+        "tiles",
+        "enemies",
+        "boss_2",
+        "down_walk.png",
+    ),
 }
 
 ARROW_SHEET = asset_path(

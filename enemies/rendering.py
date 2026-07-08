@@ -27,6 +27,8 @@ from enemies.tuning import (
 
 BOSS_LIKE_KINDS = {
     EnemyKind.ENEMY_4,
+    EnemyKind.BOSS_1,
+    EnemyKind.BOSS_2,
 }
 
 
