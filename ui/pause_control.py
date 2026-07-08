@@ -28,6 +28,7 @@ class PauseControl(UiComponent):
             return None
 
         self._is_hovered = self._layout.pause_button.collidepoint(event.pos)
+
         if snapshot is None or not self._can_pause(snapshot) or not self._is_hovered:
             return None
 
@@ -35,13 +36,16 @@ class PauseControl(UiComponent):
 
     def draw(self, surface: pygame.Surface, snapshot: GameSnapshot) -> None:
         self._is_hovered = self._layout.pause_button.collidepoint(pygame.mouse.get_pos())
+
         fill, border, text_color = self._button_style(snapshot)
         rect = self._layout.pause_button
+
         pygame.draw.rect(surface, fill, rect, border_radius=8)
         pygame.draw.rect(surface, border, rect, width=2, border_radius=8)
+
         draw_centered_text(
             surface,
-            "ПАУЗА  [P]",
+            "МЕНЮ [P]",
             self._fonts.section,
             text_color,
             rect,
@@ -56,6 +60,7 @@ class PauseControl(UiComponent):
             )
 
         fill: Color = (83, 81, 126) if self._is_hovered else (68, 67, 108)
+
         return fill, (203, 194, 241), (246, 244, 255)
 
     @staticmethod
