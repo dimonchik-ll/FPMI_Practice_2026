@@ -6,8 +6,18 @@ from pathlib import Path
 from typing import Any
 
 from shared.asset_manifest import ENEMY_WALK_SHEETS
-from enemies.tuning import CAMPAIGN_MAX_WAVES, FINAL_BOSS_WAVE
+from enemies.tuning import (
+    CAMPAIGN_MAX_WAVES,
+    ENEMY_FRAME_SIZE,
+    FINAL_BOSS_WAVE,
+)
 from enemies.waves import FINAL_BOSS_KIND, is_final_boss_wave
+from enemies.rendering import (
+    draw_enemy_shadow,
+    draw_health_bar,
+    screen_center,
+    target_draw_size_for_kind,
+)
 from shared.assets import load_sprite_frame
 from shared.contracts import (
     DamageCommand,
@@ -362,11 +372,15 @@ class EnemySystem:
         import pygame
 
         for enemy in self._enemies:
-            center = self._screen_center(enemy.position, camera_offset)
+            center = screen_center(enemy.position, camera_offset)
             image = self._load_animation_frame(enemy)
+
+            if enemy.state != _EnemyState.DYING:
+                draw_enemy_shadow(surface, center, enemy.kind)
 
             if image is not None:
                 if enemy.state == _EnemyState.DYING:
+                    image = image.copy()
                     alpha = max(
                         0,
                         int(
@@ -392,30 +406,12 @@ class EnemySystem:
             if enemy.state == _EnemyState.DYING:
                 continue
 
-            health_ratio = max(
-                0.0,
-                min(1.0, enemy.health / enemy.max_health),
-            )
-
-            health_bar = pygame.Rect(
-                center[0] - 20,
-                center[1] - 31,
-                40,
-                5,
-            )
-
-            pygame.draw.rect(surface, (63, 24, 28), health_bar)
-            pygame.draw.rect(
+            draw_health_bar(
                 surface,
-                (66, 180, 79),
-                (
-                    health_bar.x,
-                    health_bar.y,
-                    int(health_bar.width * health_ratio),
-                    health_bar.height,
-                ),
+                center,
+                enemy.health,
+                enemy.max_health,
             )
-
     def _spawn_ready_enemies(self) -> None:
         while (
             self._queue
@@ -642,14 +638,15 @@ class EnemySystem:
     @staticmethod
     def _load_animation_frame(enemy: _EnemyRuntime) -> Any | None:
         selection = EnemySystem._animation_selection(enemy)
+        target_size = target_draw_size_for_kind(enemy.kind)
 
         frame = load_sprite_frame(
             selection.path,
             frame_index=int(
                 enemy.animation_time * ANIMATION_FPS[enemy.state]
             ),
-            frame_size=(48, 48),
-            target_size=(40, 40),
+            frame_size=(ENEMY_FRAME_SIZE, ENEMY_FRAME_SIZE),
+            target_size=(target_size, target_size),
         )
 
         if frame is None:
@@ -661,8 +658,6 @@ class EnemySystem:
             return pygame.transform.flip(frame, True, False)
 
         return frame
-
-
 def _facing_from_delta(
     delta_x: float,
     delta_y: float,

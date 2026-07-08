@@ -17,6 +17,7 @@ FRAME_COUNT = 6
 ROW_COUNT = 4
 OUTPUT_FRAME_SIZE = 48
 PADDING = 4
+BASELINE_PADDING = 3
 
 
 def make_light_checkerboard_transparent(image: Image.Image) -> Image.Image:
@@ -100,14 +101,12 @@ def fit_frame_into_48(frame: Image.Image, scale: float) -> Image.Image:
         (OUTPUT_FRAME_SIZE, OUTPUT_FRAME_SIZE),
         (0, 0, 0, 0),
     )
-    result.paste(
-        frame,
-        (
-            (OUTPUT_FRAME_SIZE - frame.width) // 2,
-            (OUTPUT_FRAME_SIZE - frame.height) // 2,
-        ),
-        frame,
-    )
+
+    x = (OUTPUT_FRAME_SIZE - frame.width) // 2
+    y = OUTPUT_FRAME_SIZE - BASELINE_PADDING - frame.height
+
+    result.paste(frame, (x, y), frame)
+
     return result
 
 
