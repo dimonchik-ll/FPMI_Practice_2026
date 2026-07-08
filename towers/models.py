@@ -36,6 +36,7 @@ class TowerArchetype:
 
     attack_type: AttackType
     default_priority: TargetPriority
+    projectile_kind: str
     projectile_speed: float
     extra_pierces: int
     splash_radius: float
@@ -48,6 +49,7 @@ class TowerStats:
     attack_range: float
     attacks_per_second: float
     projectile_speed: float
+    projectile_kind: str
     attack_type: AttackType
     extra_pierces: int
     splash_radius: float
@@ -61,6 +63,7 @@ ARCHETYPES: dict[TowerKind, TowerArchetype] = {
     TowerKind.ARCHER_1: TowerArchetype(
         attack_type=AttackType.SINGLE,
         default_priority=TargetPriority.FIRST,
+        projectile_kind="arrow",
         projectile_speed=430.0,
         extra_pierces=0,
         splash_radius=0.0,
@@ -69,6 +72,7 @@ ARCHETYPES: dict[TowerKind, TowerArchetype] = {
     TowerKind.ARCHER_2: TowerArchetype(
         attack_type=AttackType.PIERCING,
         default_priority=TargetPriority.FIRST,
+        projectile_kind="arrow",
         projectile_speed=370.0,
         extra_pierces=1,
         splash_radius=0.0,
@@ -77,6 +81,7 @@ ARCHETYPES: dict[TowerKind, TowerArchetype] = {
     TowerKind.ARCHER_3: TowerArchetype(
         attack_type=AttackType.SPLASH,
         default_priority=TargetPriority.FIRST,
+        projectile_kind="arrow",
         projectile_speed=330.0,
         extra_pierces=0,
         splash_radius=96.0,
@@ -85,6 +90,7 @@ ARCHETYPES: dict[TowerKind, TowerArchetype] = {
     TowerKind.ARCHER_4: TowerArchetype(
         attack_type=AttackType.SPLASH,
         default_priority=TargetPriority.FIRST,
+        projectile_kind="arrow",
         projectile_speed=345.0,
         extra_pierces=0,
         splash_radius=112.0,
@@ -93,6 +99,7 @@ ARCHETYPES: dict[TowerKind, TowerArchetype] = {
     TowerKind.ARCHER_5: TowerArchetype(
         attack_type=AttackType.SPLASH,
         default_priority=TargetPriority.FIRST,
+        projectile_kind="arrow",
         projectile_speed=360.0,
         extra_pierces=0,
         splash_radius=128.0,
@@ -101,6 +108,7 @@ ARCHETYPES: dict[TowerKind, TowerArchetype] = {
     TowerKind.ARCHER_6: TowerArchetype(
         attack_type=AttackType.SPLASH,
         default_priority=TargetPriority.FIRST,
+        projectile_kind="arrow",
         projectile_speed=375.0,
         extra_pierces=0,
         splash_radius=144.0,
@@ -109,6 +117,7 @@ ARCHETYPES: dict[TowerKind, TowerArchetype] = {
     TowerKind.ARCHER_7: TowerArchetype(
         attack_type=AttackType.SPLASH,
         default_priority=TargetPriority.FIRST,
+        projectile_kind="arrow",
         projectile_speed=390.0,
         extra_pierces=0,
         splash_radius=160.0,
@@ -117,10 +126,83 @@ ARCHETYPES: dict[TowerKind, TowerArchetype] = {
     TowerKind.ARCHER_8: TowerArchetype(
         attack_type=AttackType.SPLASH,
         default_priority=TargetPriority.FIRST,
+        projectile_kind="arrow",
         projectile_speed=410.0,
         extra_pierces=0,
         splash_radius=180.0,
         splash_damage_multiplier=0.72,
+    ),
+    TowerKind.MAGE_1: TowerArchetype(
+        attack_type=AttackType.SPLASH,
+        default_priority=TargetPriority.FIRST,
+        projectile_kind="fireball",
+        projectile_speed=260.0,
+        extra_pierces=0,
+        splash_radius=84.0,
+        splash_damage_multiplier=0.70,
+    ),
+    TowerKind.MAGE_2: TowerArchetype(
+        attack_type=AttackType.SPLASH,
+        default_priority=TargetPriority.FIRST,
+        projectile_kind="fireball",
+        projectile_speed=275.0,
+        extra_pierces=0,
+        splash_radius=96.0,
+        splash_damage_multiplier=0.72,
+    ),
+    TowerKind.MAGE_3: TowerArchetype(
+        attack_type=AttackType.SPLASH,
+        default_priority=TargetPriority.FIRST,
+        projectile_kind="fireball",
+        projectile_speed=290.0,
+        extra_pierces=0,
+        splash_radius=110.0,
+        splash_damage_multiplier=0.74,
+    ),
+    TowerKind.MAGE_4: TowerArchetype(
+        attack_type=AttackType.SPLASH,
+        default_priority=TargetPriority.FIRST,
+        projectile_kind="fireball",
+        projectile_speed=305.0,
+        extra_pierces=0,
+        splash_radius=124.0,
+        splash_damage_multiplier=0.76,
+    ),
+    TowerKind.MAGE_5: TowerArchetype(
+        attack_type=AttackType.SPLASH,
+        default_priority=TargetPriority.FIRST,
+        projectile_kind="fireball",
+        projectile_speed=320.0,
+        extra_pierces=0,
+        splash_radius=138.0,
+        splash_damage_multiplier=0.78,
+    ),
+    TowerKind.MAGE_6: TowerArchetype(
+        attack_type=AttackType.SPLASH,
+        default_priority=TargetPriority.FIRST,
+        projectile_kind="fireball",
+        projectile_speed=335.0,
+        extra_pierces=0,
+        splash_radius=154.0,
+        splash_damage_multiplier=0.80,
+    ),
+    TowerKind.MAGE_7: TowerArchetype(
+        attack_type=AttackType.SPLASH,
+        default_priority=TargetPriority.FIRST,
+        projectile_kind="fireball",
+        projectile_speed=350.0,
+        extra_pierces=0,
+        splash_radius=170.0,
+        splash_damage_multiplier=0.82,
+    ),
+    TowerKind.MAGE_8: TowerArchetype(
+        attack_type=AttackType.SPLASH,
+        default_priority=TargetPriority.FIRST,
+        projectile_kind="fireball",
+        projectile_speed=365.0,
+        extra_pierces=0,
+        splash_radius=190.0,
+        splash_damage_multiplier=0.85,
     ),
 }
 
@@ -155,6 +237,7 @@ class Projectile:
     lifetime_remaining: float
     remaining_travel_distance: float
     direction: Vector2 = Vector2(1.0, 0.0)
+    projectile_kind: str = "arrow"
     hit_enemy_ids: set[str] = field(default_factory=set)
 
 
@@ -174,6 +257,7 @@ def stats_for(kind: TowerKind, _level: int = 1) -> TowerStats:
         attack_range=definition.attack_range,
         attacks_per_second=definition.attacks_per_second,
         projectile_speed=archetype.projectile_speed,
+        projectile_kind=archetype.projectile_kind,
         attack_type=archetype.attack_type,
         extra_pierces=archetype.extra_pierces,
         splash_radius=archetype.splash_radius,

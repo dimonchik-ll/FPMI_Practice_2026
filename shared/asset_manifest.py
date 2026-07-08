@@ -31,9 +31,17 @@ TOWER_IDLE_ASSETS = {
     TowerKind.ARCHER_4: asset_path("tiles", "towers", "idle", "archer_3.png"),
     TowerKind.ARCHER_5: asset_path("tiles", "towers", "idle", "archer_5.png"),
     TowerKind.ARCHER_6: asset_path("tiles", "towers", "idle", "archer_6.png"),
-    TowerKind.ARCHER_7: asset_path("tiles", "towers", "idle", "archer_6.png"),
+    TowerKind.ARCHER_7: asset_path("tiles", "towers", "idle", "archer_7.png"),
     # The code loads this file automatically if it is present in the asset pack.
-    TowerKind.ARCHER_8: asset_path("tiles", "towers", "idle", "archer_6.png"),
+    TowerKind.ARCHER_8: asset_path("tiles", "towers", "idle", "archer_8.png"),
+    TowerKind.MAGE_1: asset_path("tiles", "towers", "idle", "mage_1.png"),
+    TowerKind.MAGE_2: asset_path("tiles", "towers", "idle", "mage_2.png"),
+    TowerKind.MAGE_3: asset_path("tiles", "towers", "idle", "mage_3.png"),
+    TowerKind.MAGE_4: asset_path("tiles", "towers", "idle", "mage_4.png"),
+    TowerKind.MAGE_5: asset_path("tiles", "towers", "idle", "mage_5.png"),
+    TowerKind.MAGE_6: asset_path("tiles", "towers", "idle", "mage_6.png"),
+    TowerKind.MAGE_7: asset_path("tiles", "towers", "idle", "mage_7.png"),
+    TowerKind.MAGE_8: asset_path("tiles", "towers", "idle", "mage_8.png"),
 }
 
 # The delivered archive currently contains idle/archer_1.png … archer_7.png.
@@ -53,6 +61,14 @@ TOWER_UNIT_SHEETS = {
     TowerKind.ARCHER_6: asset_path("tiles", "towers", "units", "archer_3", "down_idle.png"),
     TowerKind.ARCHER_7: asset_path("tiles", "towers", "units", "archer_3", "down_idle.png"),
     TowerKind.ARCHER_8: asset_path("tiles", "towers", "units", "archer_3", "down_idle.png"),
+    TowerKind.MAGE_1: asset_path("tiles", "towers", "units", "mage_1", "down_idle.png"),
+    TowerKind.MAGE_2: asset_path("tiles", "towers", "units", "mage_1", "down_idle.png"),
+    TowerKind.MAGE_3: asset_path("tiles", "towers", "units", "mage_1", "down_idle.png"),
+    TowerKind.MAGE_4: asset_path("tiles", "towers", "units", "mage_1", "down_idle.png"),
+    TowerKind.MAGE_5: asset_path("tiles", "towers", "units", "mage_1", "down_idle.png"),
+    TowerKind.MAGE_6: asset_path("tiles", "towers", "units", "mage_1", "down_idle.png"),
+    TowerKind.MAGE_7: asset_path("tiles", "towers", "units", "mage_1", "down_idle.png"),
+    TowerKind.MAGE_8: asset_path("tiles", "towers", "units", "mage_1", "down_idle.png"),
 }
 
 
@@ -106,4 +122,11 @@ ARROW_SHEET = asset_path(
     "projectiles",
     "arrows",
     "arrow_1.png",
+)
+
+FIREBALL_SHEET = asset_path(
+    "tiles",
+    "projectiles",
+    "magic",
+    "fireball.png",
 )

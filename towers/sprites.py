@@ -6,6 +6,7 @@ from typing import Any
 
 from shared.asset_manifest import (
     ARROW_SHEET,
+    FIREBALL_SHEET,
     TOWER_IDLE_ASSETS,
     TOWER_IDLE_FALLBACK_ASSETS,
     TOWER_UNIT_SHEETS,
@@ -19,7 +20,10 @@ _BASE_FRAME_WIDTH = 70
 _BASE_FRAME_HEIGHT = 130
 _UNIT_FRAME_SIZE = 48
 _ARROW_RENDER_HEIGHT = 22
+_FIREBALL_RENDER_SIZE = 24
+_MAGE_UNIT_RENDER_SIZE = 40
 _ARROW_SOURCE_OFFSET = -90.0
+_FIREBALL_SOURCE_OFFSET = -90.0
 
 # BuildRequest.position is the centre of the build cell. The base PNG has a
 # low anchor. Each tower artwork has its platform at a different height, so the
@@ -37,6 +41,14 @@ _UNIT_PLATFORM_RISE_FROM_BASE_BOTTOM: dict[TowerKind, int] = {
     TowerKind.ARCHER_6: 57,
     TowerKind.ARCHER_7: 55,
     TowerKind.ARCHER_8: 55,
+    TowerKind.MAGE_1: 34,
+    TowerKind.MAGE_2: 38,
+    TowerKind.MAGE_3: 44,
+    TowerKind.MAGE_4: 48,
+    TowerKind.MAGE_5: 52,
+    TowerKind.MAGE_6: 60,
+    TowerKind.MAGE_7: 66,
+    TowerKind.MAGE_8: 66,
 }
 _DEFAULT_UNIT_PLATFORM_RISE = 48
 
@@ -53,6 +65,8 @@ class TowerRenderer:
         self._unit_frames: dict[tuple[object, Facing, bool, bool, int], Any] = {}
         self._arrow_frame: Any | None = None
         self._arrow_was_loaded = False
+        self._fireball_frame: Any | None = None
+        self._fireball_was_loaded = False
 
     def draw_tower(self, surface: Any, tower: TowerRuntime) -> None:
         x = int(tower.request.position.x)
@@ -81,6 +95,17 @@ class TowerRenderer:
 
         x = int(projectile.position.x)
         y = int(projectile.position.y)
+        if projectile.projectile_kind == "fireball":
+            fireball = self._load_fireball_frame()
+            if fireball is not None:
+                angle = (
+                    -degrees(atan2(projectile.direction.y, projectile.direction.x))
+                    + _FIREBALL_SOURCE_OFFSET
+                )
+                rotated = pygame.transform.rotate(fireball, angle)
+                surface.blit(rotated, rotated.get_rect(center=(x, y)))
+                return
+
         arrow = self._load_arrow_frame()
         if arrow is not None:
             angle = (
@@ -93,7 +118,8 @@ class TowerRenderer:
 
         end_x = int(x + projectile.direction.x * 12)
         end_y = int(y + projectile.direction.y * 12)
-        pygame.draw.line(surface, (244, 218, 130), (x, y), (end_x, end_y), 2)
+        line_color = (91, 213, 255) if projectile.projectile_kind == "fireball" else (244, 218, 130)
+        pygame.draw.line(surface, line_color, (x, y), (end_x, end_y), 2)
 
     def _load_base_frame(self, tower: TowerRuntime) -> Any | None:
         sheet = self._load_base_sheet(tower.kind)
@@ -101,7 +127,11 @@ class TowerRenderer:
             return None
 
         frame_count = max(1, sheet.get_width() // _BASE_FRAME_WIDTH)
-        frame_index = int(tower.animation_time * 5) % frame_count
+        frame_index = (
+            int(tower.animation_time * 5) % frame_count
+            if tower.attack_animation_remaining > 0.0
+            else 0
+        )
         cache_key = (tower.kind, frame_index)
         cached = self._base_frames.get(cache_key)
         if cached is not None:
@@ -139,7 +169,11 @@ class TowerRenderer:
 
         frame_count = max(1, sheet.get_width() // _UNIT_FRAME_SIZE)
         frames_per_second = 12 if is_attacking else 6
-        frame_index = int(tower.animation_time * frames_per_second) % frame_count
+        frame_index = (
+            int(tower.animation_time * frames_per_second) % frame_count
+            if is_attacking
+            else 0
+        )
         cache_key = (tower.kind, tower.facing, is_attacking, flip_x, frame_index)
         cached = self._unit_frames.get(cache_key)
         if cached is not None:
@@ -160,6 +194,7 @@ class TowerRenderer:
             frame = pygame.transform.flip(frame, True, False)
 
         frame = self._trim_unit_bottom_padding(frame)
+        frame = self._scale_unit_frame_for_kind(tower.kind, frame)
         self._unit_frames[cache_key] = frame
         return frame
 
@@ -192,7 +227,7 @@ class TowerRenderer:
         files, which was the reason horizontal turns previously fell back to
         the down-facing sprite.
         """
-        asset_direction, flip_x = TowerRenderer._asset_direction_for(facing)
+        asset_direction, flip_x = TowerRenderer._asset_direction_for(idle_path, facing)
         states = TowerRenderer._state_candidates(requested_state)
 
         candidates: list[tuple[Path, bool, bool]] = []
@@ -217,11 +252,16 @@ class TowerRenderer:
         return tuple(candidates)
 
     @staticmethod
-    def _asset_direction_for(facing: Facing) -> tuple[str, bool]:
+    def _asset_direction_for(idle_path: Path, facing: Facing) -> tuple[str, bool]:
         if facing == Facing.UP:
             return "up", False
         if facing == Facing.DOWN:
             return "down", False
+
+        unit_folder = idle_path.parent.name
+        if unit_folder.startswith("mage_"):
+            return facing.value, False
+
         if facing == _SIDE_SPRITE_FACING:
             return "side", False
         return "side", True
@@ -253,6 +293,32 @@ class TowerRenderer:
         if not sheet.get_rect().contains(rect):
             return None
         return sheet.subsurface(rect).copy()
+
+
+    @staticmethod
+    def _scale_unit_frame_for_kind(kind: TowerKind, frame: Any) -> Any:
+        if not kind.value.startswith("mage_"):
+            return frame
+
+        width, height = frame.get_size()
+        if width <= 0 or height <= 0:
+            return frame
+
+        scale = min(
+            _MAGE_UNIT_RENDER_SIZE / width,
+            _MAGE_UNIT_RENDER_SIZE / height,
+            1.0,
+        )
+        target_size = (
+            max(1, round(width * scale)),
+            max(1, round(height * scale)),
+        )
+        if target_size == (width, height):
+            return frame
+
+        import pygame
+
+        return pygame.transform.scale(frame, target_size)
 
     @staticmethod
     def _trim_unit_bottom_padding(frame: Any) -> Any:
@@ -318,6 +384,27 @@ class TowerRenderer:
             (target_width, target_height),
         )
         return self._arrow_frame
+
+    def _load_fireball_frame(self) -> Any | None:
+        if self._fireball_was_loaded:
+            return self._fireball_frame
+
+        self._fireball_was_loaded = True
+        fireball = load_image(FIREBALL_SHEET)
+        if fireball is None:
+            return None
+
+        width, height = fireball.get_size()
+        if width <= 0 or height <= 0:
+            return None
+
+        import pygame
+
+        self._fireball_frame = pygame.transform.scale(
+            fireball,
+            (_FIREBALL_RENDER_SIZE, _FIREBALL_RENDER_SIZE),
+        )
+        return self._fireball_frame
 
     @staticmethod
     def _draw_level_badge(surface: Any, level: int, x: int, y: int) -> None:

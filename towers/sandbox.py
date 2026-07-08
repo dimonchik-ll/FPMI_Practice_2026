@@ -37,7 +37,7 @@ def draw_enemy(surface, enemy: EnemyView) -> None:
 def main() -> None:
     pygame.init()
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
-    pygame.display.set_caption("Towers sandbox — eight upgrade levels")
+    pygame.display.set_caption("Towers sandbox — archers and mages")
     font = pygame.font.Font(None, 28)
     clock = pygame.time.Clock()
     max_frames = max(0, int(os.getenv("TOWERS_SANDBOX_MAX_FRAMES", "0")))
@@ -46,10 +46,10 @@ def main() -> None:
     towers = TowerSystem()
     rapid = towers.build(BuildRequest(TowerKind.ARCHER_1, (2, 5), Vector2(150, 340)))
     piercing = towers.build(BuildRequest(TowerKind.ARCHER_1, (6, 5), Vector2(380, 340)))
-    ultimate = towers.build(BuildRequest(TowerKind.ARCHER_1, (10, 5), Vector2(610, 340)))
+    mage = towers.build(BuildRequest(TowerKind.MAGE_1, (10, 5), Vector2(610, 340)))
     towers.upgrade(piercing.identifier)
     for _ in range(7):
-        towers.upgrade(ultimate.identifier)
+        towers.upgrade(mage.identifier)
 
     enemies = [
         make_enemy("near-rapid", Vector2(245, 295), 170, 10),
@@ -96,7 +96,7 @@ def main() -> None:
         )
         screen.blit(text, (20, 20))
         hint = font.render(
-            "Eight levels: I — single, II — chain, III–VIII — expanding splash | Right click: remove tower",
+            "Archers: single/chain/splash | Mages: fireball splash | Right click: remove tower",
             True,
             (247, 240, 210),
         )

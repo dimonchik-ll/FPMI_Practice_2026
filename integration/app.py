@@ -9,6 +9,7 @@ from core.map_renderer import MapRenderer
 from enemies.api import EnemySystem
 from enemies.tuning import CAMPAIGN_MAX_WAVES
 from shared.contracts import (
+    BUILDABLE_TOWER_KINDS,
     GameEventKind,
     GameSnapshot,
     TowerKind,
@@ -127,7 +128,7 @@ class TowerDefenseApp:
 
             tower_kind = payload.get("tower_kind")
 
-            if isinstance(tower_kind, TowerKind) and tower_kind == TowerKind.ARCHER_1:
+            if isinstance(tower_kind, TowerKind) and tower_kind in BUILDABLE_TOWER_KINDS:
                 self.economy.select_tower(tower_kind)
 
             return
@@ -184,8 +185,8 @@ class TowerDefenseApp:
         tower_kind = self.economy.state.selected_tower
 
         if (
-            tower_kind != TowerKind.ARCHER_1
-            or not self.economy.can_buy(TowerKind.ARCHER_1)
+            tower_kind not in BUILDABLE_TOWER_KINDS
+            or not self.economy.can_buy(tower_kind)
         ):
             return
 

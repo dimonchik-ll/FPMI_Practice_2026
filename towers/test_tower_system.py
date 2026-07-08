@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from shared.contracts import BuildRequest, EnemyKind, EnemyView, TowerKind, Vector2
+from shared.contracts import BUILDABLE_TOWER_KINDS, BuildRequest, EnemyKind, EnemyView, TowerKind, Vector2
 from towers.api import TowerSystem
 from towers.models import TargetPriority
 
@@ -39,14 +39,19 @@ def build_upgraded(towers: TowerSystem, level: int):
     return tower
 
 
-def test_only_archer_i_can_be_built_directly() -> None:
-    towers = TowerSystem()
-
+def test_only_level_one_towers_can_be_built_directly() -> None:
     for tower_kind in TowerKind:
-        if tower_kind == TowerKind.ARCHER_1:
+        towers = TowerSystem()
+        request = BuildRequest(tower_kind, (1, 1), Vector2(0.0, 0.0))
+
+        if tower_kind in BUILDABLE_TOWER_KINDS:
+            view = towers.build(request)
+            assert view.kind == tower_kind
+            assert view.level == 1
             continue
+
         with pytest.raises(ValueError):
-            towers.build(BuildRequest(tower_kind, (1, 1), Vector2(0.0, 0.0)))
+            towers.build(request)
 
 
 def test_upgrade_changes_tower_kind_and_exposes_next_upgrade_cost() -> None:
@@ -76,6 +81,38 @@ def test_upgrade_changes_tower_kind_and_exposes_next_upgrade_cost() -> None:
             assert towers.upgrade(tower.identifier)
 
     assert not towers.upgrade(tower.identifier)
+
+
+def test_mage_upgrade_path_and_fireball_projectile_kind() -> None:
+    towers = TowerSystem()
+    tower = towers.build(BuildRequest(TowerKind.MAGE_1, (1, 1), Vector2(0.0, 0.0)))
+
+    expected = (
+        (TowerKind.MAGE_1, 1, "splash", 125),
+        (TowerKind.MAGE_2, 2, "splash", 180),
+        (TowerKind.MAGE_3, 3, "splash", 245),
+        (TowerKind.MAGE_4, 4, "splash", 330),
+        (TowerKind.MAGE_5, 5, "splash", 430),
+        (TowerKind.MAGE_6, 6, "splash", 560),
+        (TowerKind.MAGE_7, 7, "splash", 720),
+        (TowerKind.MAGE_8, 8, "splash", None),
+    )
+
+    for index, (kind, level, attack_type, upgrade_cost) in enumerate(expected):
+        view = towers.tower_at_cell((1, 1))
+        assert view is not None
+        assert view.kind == kind
+        assert view.level == level
+        assert view.attack_type == attack_type
+        assert view.upgrade_cost == upgrade_cost
+
+        if index < len(expected) - 1:
+            assert towers.upgrade(tower.identifier)
+
+    target = enemy("target", 90.0, 0.0)
+    towers.update(0.0, (target,))
+    projectile = towers._projectiles.projectiles()[0]
+    assert projectile.projectile_kind == "fireball"
 
 
 def test_tower_at_position_selects_platform_not_only_cell_center() -> None:
@@ -307,3 +344,22 @@ def test_archer_facing_updates_while_its_attack_is_on_cooldown() -> None:
 
     towers.update(0.05, (up,))
     assert towers._towers[0].facing.value == "up"
+
+
+def test_tower_animation_time_advances_only_while_attacking() -> None:
+    towers = TowerSystem()
+    build(towers)
+    target = enemy("target", 80.0, 0.0)
+
+    towers.update(0.0, (target,))
+    assert towers._towers[0].attack_animation_remaining > 0.0
+    assert towers._towers[0].animation_time == 0.0
+
+    towers.update(0.05, (target,))
+    assert towers._towers[0].animation_time > 0.0
+
+    towers.update(0.20, ())
+    assert towers._towers[0].attack_animation_remaining == 0.0
+
+    towers.update(0.05, ())
+    assert towers._towers[0].animation_time == 0.0
