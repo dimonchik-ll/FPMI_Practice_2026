@@ -26,6 +26,14 @@ class TowerKind(str, Enum):
     ARCHER_6 = "archer_6"
     ARCHER_7 = "archer_7"
     ARCHER_8 = "archer_8"
+    MAGE_1 = "mage_1"
+    MAGE_2 = "mage_2"
+    MAGE_3 = "mage_3"
+    MAGE_4 = "mage_4"
+    MAGE_5 = "mage_5"
+    MAGE_6 = "mage_6"
+    MAGE_7 = "mage_7"
+    MAGE_8 = "mage_8"
 
 
 class EnemyKind(str, Enum):
@@ -163,9 +171,81 @@ TOWER_DEFINITIONS: dict[TowerKind, TowerDefinition] = {
         attacks_per_second=1.00,
         asset_key="archer_8",
     ),
+    TowerKind.MAGE_1: TowerDefinition(
+        kind=TowerKind.MAGE_1,
+        title="Маг I",
+        cost=85,
+        damage=22,
+        attack_range=150.0,
+        attacks_per_second=0.65,
+        asset_key="mage_1",
+    ),
+    TowerKind.MAGE_2: TowerDefinition(
+        kind=TowerKind.MAGE_2,
+        title="Маг II",
+        cost=0,
+        damage=34,
+        attack_range=170.0,
+        attacks_per_second=0.66,
+        asset_key="mage_2",
+    ),
+    TowerKind.MAGE_3: TowerDefinition(
+        kind=TowerKind.MAGE_3,
+        title="Маг III",
+        cost=0,
+        damage=50,
+        attack_range=190.0,
+        attacks_per_second=0.68,
+        asset_key="mage_3",
+    ),
+    TowerKind.MAGE_4: TowerDefinition(
+        kind=TowerKind.MAGE_4,
+        title="Маг IV",
+        cost=0,
+        damage=70,
+        attack_range=210.0,
+        attacks_per_second=0.70,
+        asset_key="mage_4",
+    ),
+    TowerKind.MAGE_5: TowerDefinition(
+        kind=TowerKind.MAGE_5,
+        title="Маг V",
+        cost=0,
+        damage=94,
+        attack_range=235.0,
+        attacks_per_second=0.72,
+        asset_key="mage_5",
+    ),
+    TowerKind.MAGE_6: TowerDefinition(
+        kind=TowerKind.MAGE_6,
+        title="Маг VI",
+        cost=0,
+        damage=122,
+        attack_range=255.0,
+        attacks_per_second=0.74,
+        asset_key="mage_6",
+    ),
+    TowerKind.MAGE_7: TowerDefinition(
+        kind=TowerKind.MAGE_7,
+        title="Маг VII",
+        cost=0,
+        damage=154,
+        attack_range=275.0,
+        attacks_per_second=0.76,
+        asset_key="mage_7",
+    ),
+    TowerKind.MAGE_8: TowerDefinition(
+        kind=TowerKind.MAGE_8,
+        title="Маг VIII",
+        cost=0,
+        damage=190,
+        attack_range=300.0,
+        attacks_per_second=0.78,
+        asset_key="mage_8",
+    ),
 }
 
-TOWER_LEVELS: tuple[TowerKind, ...] = (
+ARCHER_TOWER_LEVELS: tuple[TowerKind, ...] = (
     TowerKind.ARCHER_1,
     TowerKind.ARCHER_2,
     TowerKind.ARCHER_3,
@@ -176,12 +256,36 @@ TOWER_LEVELS: tuple[TowerKind, ...] = (
     TowerKind.ARCHER_8,
 )
 
-TOWER_UPGRADE_PATH: dict[TowerKind, TowerKind] = dict(
-    zip(TOWER_LEVELS, TOWER_LEVELS[1:])
+MAGE_TOWER_LEVELS: tuple[TowerKind, ...] = (
+    TowerKind.MAGE_1,
+    TowerKind.MAGE_2,
+    TowerKind.MAGE_3,
+    TowerKind.MAGE_4,
+    TowerKind.MAGE_5,
+    TowerKind.MAGE_6,
+    TowerKind.MAGE_7,
+    TowerKind.MAGE_8,
 )
 
+# Kept for backwards compatibility with earlier tests/imports.
+TOWER_LEVELS: tuple[TowerKind, ...] = ARCHER_TOWER_LEVELS
+TOWER_UPGRADE_CHAINS: tuple[tuple[TowerKind, ...], ...] = (
+    ARCHER_TOWER_LEVELS,
+    MAGE_TOWER_LEVELS,
+)
+BUILDABLE_TOWER_KINDS: tuple[TowerKind, ...] = (
+    TowerKind.ARCHER_1,
+    TowerKind.MAGE_1,
+)
+
+TOWER_UPGRADE_PATH: dict[TowerKind, TowerKind] = {
+    current: upgraded
+    for chain in TOWER_UPGRADE_CHAINS
+    for current, upgraded in zip(chain, chain[1:])
+}
+
 # These are additional payments for the next level.
-# The base construction cost comes only from TOWER_DEFINITIONS[ARCHER_1].cost.
+# The base construction cost comes only from level I tower definitions.
 TOWER_UPGRADE_COSTS: dict[TowerKind, int] = {
     TowerKind.ARCHER_1: 70,
     TowerKind.ARCHER_2: 110,
@@ -190,8 +294,14 @@ TOWER_UPGRADE_COSTS: dict[TowerKind, int] = {
     TowerKind.ARCHER_5: 280,
     TowerKind.ARCHER_6: 365,
     TowerKind.ARCHER_7: 470,
+    TowerKind.MAGE_1: 125,
+    TowerKind.MAGE_2: 180,
+    TowerKind.MAGE_3: 245,
+    TowerKind.MAGE_4: 330,
+    TowerKind.MAGE_5: 430,
+    TowerKind.MAGE_6: 560,
+    TowerKind.MAGE_7: 720,
 }
-
 
 def next_tower_kind(kind: TowerKind) -> TowerKind | None:
     return TOWER_UPGRADE_PATH.get(kind)
@@ -201,12 +311,21 @@ def tower_upgrade_cost(kind: TowerKind) -> int | None:
     return TOWER_UPGRADE_COSTS.get(kind)
 
 
+def tower_upgrade_chain(kind: TowerKind) -> tuple[TowerKind, ...]:
+    for chain in TOWER_UPGRADE_CHAINS:
+        if kind in chain:
+            return chain
+    raise ValueError(f"Unknown tower kind: {kind!r}")
+
+
 def tower_level(kind: TowerKind) -> int:
-    return TOWER_LEVELS.index(kind) + 1
+    return tower_upgrade_chain(kind).index(kind) + 1
 
 
-def tower_max_level() -> int:
-    return len(TOWER_LEVELS)
+def tower_max_level(kind: TowerKind | None = None) -> int:
+    if kind is None:
+        return max(len(chain) for chain in TOWER_UPGRADE_CHAINS)
+    return len(tower_upgrade_chain(kind))
 
 
 @dataclass(frozen=True, slots=True)
@@ -365,7 +484,7 @@ class PlayerView:
 
 @dataclass(slots=True)
 class PlayerState:
-    money: int = 120
+    money: int = 12000
     lives: int = 20
     score: int = 0
     selected_tower: TowerKind | None = TowerKind.ARCHER_1

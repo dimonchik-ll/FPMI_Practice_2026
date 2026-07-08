@@ -4,6 +4,7 @@ from dataclasses import replace
 from typing import Any
 
 from shared.contracts import (
+    BUILDABLE_TOWER_KINDS,
     BuildRequest,
     DamageCommand,
     EnemyView,
@@ -18,7 +19,7 @@ from towers.projectiles import ProjectileSystem
 from towers.sprites import TowerRenderer
 
 
-_INITIAL_BUILD_KIND = TowerKind.ARCHER_1
+_INITIAL_BUILD_KINDS = BUILDABLE_TOWER_KINDS
 _TOWER_CLICK_HALF_WIDTH = 52.0
 _TOWER_CLICK_TOP_OFFSET = 118.0
 _TOWER_CLICK_BOTTOM_OFFSET = 42.0
@@ -32,16 +33,16 @@ class TowerSystem:
         self._next_id = 1
 
     def build(self, request: BuildRequest) -> TowerView:
-        """Builds only the initial archer level.
+        """Builds only level-I tower families.
 
-        Levels II–VIII are upgrades of an existing tower. Keeping the guard
-        here prevents bypassing the UI by creating a high-level tower directly
-        from integration code.
+        Higher levels are upgrades of existing towers. Keeping the guard here
+        prevents bypassing the UI by creating a high-level tower directly from
+        integration code.
         """
-        if request.tower_kind != _INITIAL_BUILD_KIND:
+        if request.tower_kind not in _INITIAL_BUILD_KINDS:
             raise ValueError(
-                "Можно построить только Лучника I. "
-                "Лучники II–VIII получаются через улучшение."
+                "Можно построить только башню I уровня. "
+                "Старшие уровни получаются через улучшение."
             )
 
         archetype = ARCHETYPES[request.tower_kind]
@@ -64,11 +65,14 @@ class TowerSystem:
         damage_commands = self._projectiles.update(delta_time, enemies)
 
         for tower in self._towers:
-            tower.animation_time += delta_time
-            tower.attack_animation_remaining = max(
-                0.0,
-                tower.attack_animation_remaining - delta_time,
-            )
+            if tower.attack_animation_remaining > 0.0:
+                tower.animation_time += delta_time
+                tower.attack_animation_remaining = max(
+                    0.0,
+                    tower.attack_animation_remaining - delta_time,
+                )
+            else:
+                tower.animation_time = 0.0
             tower.cooldown_remaining = max(0.0, tower.cooldown_remaining - delta_time)
 
             # The current TowerKind already represents the current upgrade
@@ -83,6 +87,7 @@ class TowerSystem:
 
             tower.cooldown_remaining = 1.0 / stats.attacks_per_second
             tower.attack_animation_remaining = 0.22
+            tower.animation_time = 0.0
             self._projectiles.spawn(
                 source_id=tower.identifier,
                 target_id=target.identifier,
@@ -94,6 +99,7 @@ class TowerSystem:
                 splash_radius=stats.splash_radius,
                 splash_damage_multiplier=stats.splash_damage_multiplier,
                 max_travel_distance=stats.attack_range,
+                projectile_kind=stats.projectile_kind,
             )
 
         return damage_commands
@@ -160,7 +166,7 @@ class TowerSystem:
         return tower_upgrade_cost(tower.kind)
 
     def upgrade(self, tower_identifier: str) -> bool:
-        """Upgrades a tower by one step from Archer I to Archer VIII.
+        """Upgrades a tower by one step inside its tower family.
 
         The tower keeps its identifier and build cell, while its asset, attack
         type and base statistics switch to the next TowerKind.

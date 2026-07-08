@@ -10,6 +10,7 @@ from shared.contracts import (
     TowerView,
     UiActionKind,
     Vector2,
+    tower_max_level,
 )
 from ui.layout import UiLayout
 from ui.theme import UiFonts, UiTheme
@@ -61,19 +62,43 @@ def menu() -> TowerActionMenu:
     return TowerActionMenu(UiLayout(640, 480), UiTheme(), UiFonts())
 
 
-def click(rect: pygame.Rect) -> pygame.event.Event:
+def mouse_down(position: tuple[int, int]) -> pygame.event.Event:
     return pygame.event.Event(
         pygame.MOUSEBUTTONDOWN,
-        {"button": 1, "pos": rect.center},
+        {"button": 1, "pos": position},
     )
+
+
+def mouse_up(position: tuple[int, int]) -> pygame.event.Event:
+    return pygame.event.Event(
+        pygame.MOUSEBUTTONUP,
+        {"button": 1, "pos": position},
+    )
+
+
+def open_confirm_dialog(
+    action_menu: TowerActionMenu,
+    state: GameSnapshot,
+    tower: TowerView,
+    *,
+    button_index: int,
+) -> None:
+    center = action_menu._button_centers(tower)[button_index]
+    assert action_menu.handle_event(mouse_down(center), state) is None
+    assert action_menu.handle_event(mouse_up(center), state) is None
 
 
 def test_upgrade_button_returns_upgrade_action_for_affordable_tower() -> None:
     action_menu = menu()
     action_menu.open("tower-1")
-    state = snapshot(tower=tower_view())
+    tower = tower_view()
+    state = snapshot(tower=tower)
 
-    action = action_menu.handle_event(click(action_menu._upgrade_button_rect()), state)
+    open_confirm_dialog(action_menu, state, tower, button_index=0)
+    action = action_menu.handle_event(
+        mouse_down(action_menu._dialog_ok_rect(tower, state).center),
+        state,
+    )
 
     assert action is not None
     assert action.kind == UiActionKind.UPGRADE_TOWER
@@ -83,9 +108,14 @@ def test_upgrade_button_returns_upgrade_action_for_affordable_tower() -> None:
 def test_upgrade_button_is_inactive_when_money_is_insufficient() -> None:
     action_menu = menu()
     action_menu.open("tower-1")
-    state = snapshot(money=30, tower=tower_view())
+    tower = tower_view()
+    state = snapshot(money=30, tower=tower)
 
-    action = action_menu.handle_event(click(action_menu._upgrade_button_rect()), state)
+    open_confirm_dialog(action_menu, state, tower, button_index=0)
+    action = action_menu.handle_event(
+        mouse_down(action_menu._dialog_ok_rect(tower, state).center),
+        state,
+    )
 
     assert action is None
 
@@ -93,9 +123,14 @@ def test_upgrade_button_is_inactive_when_money_is_insufficient() -> None:
 def test_delete_button_returns_remove_action() -> None:
     action_menu = menu()
     action_menu.open("tower-1")
-    state = snapshot(tower=tower_view())
+    tower = tower_view()
+    state = snapshot(tower=tower)
 
-    action = action_menu.handle_event(click(action_menu._delete_button_rect()), state)
+    open_confirm_dialog(action_menu, state, tower, button_index=1)
+    action = action_menu.handle_event(
+        mouse_down(action_menu._dialog_ok_rect(tower, state).center),
+        state,
+    )
 
     assert action is not None
     assert action.kind == UiActionKind.REMOVE_TOWER
@@ -111,9 +146,6 @@ def test_menu_closes_when_selected_tower_disappears() -> None:
     assert not action_menu.is_open
 
 
-def test_stat_rows_show_eight_as_the_maximum_level() -> None:
-    rows = TowerActionMenu._stat_rows(
-        tower_view(kind=TowerKind.ARCHER_8, level=8, upgrade_cost=None)
-    )
-
-    assert ("Уровень", "8 / 8") in rows
+def test_both_upgrade_families_have_eight_levels() -> None:
+    assert tower_max_level(TowerKind.ARCHER_8) == 8
+    assert tower_max_level(TowerKind.MAGE_8) == 8

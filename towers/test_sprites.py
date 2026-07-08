@@ -4,7 +4,7 @@ import sys
 from types import SimpleNamespace
 
 from shared.contracts import BuildRequest, TowerKind, Vector2
-from shared.asset_manifest import ARROW_SHEET, TOWER_IDLE_ASSETS, TOWER_UNIT_SHEETS
+from shared.asset_manifest import ARROW_SHEET, FIREBALL_SHEET, TOWER_IDLE_ASSETS, TOWER_UNIT_SHEETS
 from towers.models import Facing, Projectile, TargetPriority, TowerRuntime
 from towers.sprites import TowerRenderer
 
@@ -83,14 +83,21 @@ def _fake_pygame(rotate_calls, flip_calls=None):
     )
 
 
-def make_tower(*, facing: Facing = Facing.DOWN, attacking: bool = False) -> TowerRuntime:
+def make_tower(
+    *,
+    kind: TowerKind = TowerKind.ARCHER_2,
+    facing: Facing = Facing.DOWN,
+    attacking: bool = False,
+    animation_time: float = 0.0,
+) -> TowerRuntime:
     return TowerRuntime(
         identifier="tower-1",
-        request=BuildRequest(TowerKind.ARCHER_2, (1, 1), Vector2(100, 100)),
+        request=BuildRequest(kind, (1, 1), Vector2(100, 100)),
         level=1,
         priority=TargetPriority.NEAREST,
         facing=facing,
         attack_animation_remaining=0.1 if attacking else 0.0,
+        animation_time=animation_time,
     )
 
 
@@ -228,6 +235,39 @@ def test_arrow_keeps_thin_aspect_ratio_and_uses_upward_source_offset(monkeypatch
     assert rotate_calls == [0.0]
 
 
+def test_fireball_projectile_uses_magic_png_and_rotates_to_direction(monkeypatch) -> None:
+    rotate_calls = []
+    monkeypatch.setitem(sys.modules, "pygame", _fake_pygame(rotate_calls))
+
+    fireball = _Image("fireball", 28, 28)
+    monkeypatch.setattr(
+        "towers.sprites.load_image",
+        lambda path: fireball if path == FIREBALL_SHEET else None,
+    )
+    projectile = Projectile(
+        identifier="fireball-1",
+        source_id="tower-1",
+        target_id="enemy-1",
+        position=Vector2(50, 50),
+        damage=1,
+        speed=1,
+        extra_pierces_remaining=0,
+        splash_radius=84,
+        splash_damage_multiplier=0.7,
+        lifetime_remaining=1,
+        remaining_travel_distance=1,
+        direction=Vector2(1, 0),
+        projectile_kind="fireball",
+    )
+    surface = _Surface()
+
+    TowerRenderer().draw_projectile(surface, projectile)
+
+    assert surface.blits[0][0].name == "fireball:scaled"
+    assert surface.blits[0][0].get_size() == (24, 24)
+    assert rotate_calls == [-90.0]
+
+
 def test_level_eight_uses_final_available_base_when_archer_eight_is_missing(monkeypatch) -> None:
     rotate_calls = []
     monkeypatch.setitem(sys.modules, "pygame", _fake_pygame(rotate_calls))
@@ -245,3 +285,55 @@ def test_level_eight_uses_final_available_base_when_archer_eight_is_missing(monk
     renderer = TowerRenderer()
 
     assert renderer._load_base_sheet(TowerKind.ARCHER_8) is final_available_sheet
+
+
+def test_idle_tower_and_unit_frames_do_not_animate(monkeypatch) -> None:
+    rotate_calls = []
+    monkeypatch.setitem(sys.modules, "pygame", _fake_pygame(rotate_calls))
+
+    base_sheet = _Image("base-sheet", 280, 130)
+    unit_sheet = _Image("unit-sheet", 192, 48)
+
+    def fake_load_image(path):
+        if path == TOWER_IDLE_ASSETS[TowerKind.ARCHER_2]:
+            return base_sheet
+        if path == TOWER_UNIT_SHEETS[TowerKind.ARCHER_2]:
+            return unit_sheet
+        return None
+
+    monkeypatch.setattr("towers.sprites.load_image", fake_load_image)
+    surface = _Surface()
+
+    TowerRenderer().draw_tower(surface, make_tower(animation_time=99.0))
+
+    assert surface.blits[0][0].name == "base-sheet:frame-0"
+    assert surface.blits[1][0].name == "unit-sheet:frame-0"
+
+
+def test_mage_unit_is_smaller_and_uses_native_right_sheet(monkeypatch) -> None:
+    rotate_calls = []
+    flip_calls = []
+    monkeypatch.setitem(sys.modules, "pygame", _fake_pygame(rotate_calls, flip_calls))
+
+    base_sheet = _Image("mage-base", 280, 130)
+    right_attack = _Image("mage-right-attack", 192, 48)
+    requested_right_attack = TOWER_UNIT_SHEETS[TowerKind.MAGE_1].with_name("right_attack.png")
+
+    def fake_load_image(path):
+        if path == TOWER_IDLE_ASSETS[TowerKind.MAGE_1]:
+            return base_sheet
+        if path == requested_right_attack:
+            return right_attack
+        return None
+
+    monkeypatch.setattr("towers.sprites.load_image", fake_load_image)
+    surface = _Surface()
+
+    TowerRenderer().draw_tower(
+        surface,
+        make_tower(kind=TowerKind.MAGE_1, facing=Facing.RIGHT, attacking=True),
+    )
+
+    assert surface.blits[1][0].name.startswith("mage-right-attack:frame-")
+    assert surface.blits[1][0].get_size() == (40, 40)
+    assert flip_calls == []

@@ -25,6 +25,7 @@ class ProjectileSystem:
         splash_radius: float,
         splash_damage_multiplier: float,
         max_travel_distance: float,
+        projectile_kind: str = "arrow",
     ) -> None:
         travel_distance = max(0.0, max_travel_distance)
         safe_speed = max(1.0, speed)
@@ -43,6 +44,7 @@ class ProjectileSystem:
                 lifetime_remaining=lifetime,
                 remaining_travel_distance=travel_distance,
                 direction=self._direction_to(position, target_position),
+                projectile_kind=projectile_kind,
             )
         )
         self._next_id += 1
