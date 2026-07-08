@@ -81,6 +81,24 @@ ENEMY_WALK_SHEETS = {
         "enemy_4",
         "down_walk.png",
     ),
+    EnemyKind.ENEMY_5: asset_path(
+        "tiles",
+        "enemies",
+        "enemy_5",
+        "down_walk.png",
+    ),
+    EnemyKind.ENEMY_6: asset_path(
+        "tiles",
+        "enemies",
+        "enemy_6",
+        "down_walk.png",
+    ),
+    EnemyKind.ENEMY_7: asset_path(
+        "tiles",
+        "enemies",
+        "enemy_7",
+        "down_walk.png",
+    ),
 }
 
 ARROW_SHEET = asset_path(

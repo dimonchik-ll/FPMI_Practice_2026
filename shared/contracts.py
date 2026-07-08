@@ -33,6 +33,9 @@ class EnemyKind(str, Enum):
     ENEMY_2 = "enemy_2"
     ENEMY_3 = "enemy_3"
     ENEMY_4 = "enemy_4"
+    ENEMY_5 = "enemy_5"
+    ENEMY_6 = "enemy_6"
+    ENEMY_7 = "enemy_7"
 
 
 class UiActionKind(str, Enum):
@@ -250,6 +253,34 @@ ENEMY_DEFINITIONS: dict[EnemyKind, EnemyDefinition] = {
         base_damage=5,
         asset_key="enemy_4",
     ),
+    EnemyKind.ENEMY_5: EnemyDefinition(
+        kind=EnemyKind.ENEMY_5,
+        title="Мшистый кабан",
+        max_health=180,
+        speed=38.0,
+        reward=36,
+        base_damage=3,
+        asset_key="enemy_5",
+    ),
+    EnemyKind.ENEMY_6: EnemyDefinition(
+        kind=EnemyKind.ENEMY_6,
+        title="Бронированный жук",
+        max_health=240,
+        speed=30.0,
+        reward=48,
+        base_damage=4,
+        asset_key="enemy_6",
+    ),
+    EnemyKind.ENEMY_7: EnemyDefinition(
+        kind=EnemyKind.ENEMY_7,
+        title="Разбойник в капюшоне",
+        max_health=95,
+        speed=60.0,
+        reward=32,
+        base_damage=2,
+        asset_key="enemy_7",
+    ),
+
 }
 
 

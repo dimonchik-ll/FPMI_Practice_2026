@@ -23,6 +23,9 @@ ENEMY_DISPLAY_NAMES: dict[EnemyKind, str] = {
     EnemyKind.ENEMY_2: "Орк-громила",
     EnemyKind.ENEMY_3: "Каменный голем",
     EnemyKind.ENEMY_4: "Вождь орков",
+    EnemyKind.ENEMY_5: "Мшистый кабан",
+    EnemyKind.ENEMY_6: "Бронированный жук",
+    EnemyKind.ENEMY_7: "Разбойник в капюшоне",
 }
 
 ENEMY_SPECIAL_TRAITS: dict[EnemyKind, str] = {
@@ -30,6 +33,9 @@ ENEMY_SPECIAL_TRAITS: dict[EnemyKind, str] = {
     EnemyKind.ENEMY_2: "Крепкая кожа: поглощает 2 урона",
     EnemyKind.ENEMY_3: "Тяжёлая броня: поглощает 6 урона",
     EnemyKind.ENEMY_4: "Ярость: ускоряется при 50% здоровья",
+    EnemyKind.ENEMY_5: "Таран: крепкий враг со средней скоростью",
+    EnemyKind.ENEMY_6: "Панцирь: сильно снижает входящий урон",
+    EnemyKind.ENEMY_7: "Ловкач: быстрый враг с малым здоровьем",
 }
 
 WAVE_PLANS: dict[int, tuple[EnemyKind, ...]] = {
@@ -99,6 +105,9 @@ ENEMY_COLORS: dict[EnemyKind, tuple[int, int, int]] = {
     EnemyKind.ENEMY_2: (194, 117, 61),
     EnemyKind.ENEMY_3: (113, 130, 146),
     EnemyKind.ENEMY_4: (167, 70, 90),
+    EnemyKind.ENEMY_5: (118, 92, 68),
+    EnemyKind.ENEMY_6: (113, 155, 55),
+    EnemyKind.ENEMY_7: (113, 70, 103),
 }
 
 ANIMATION_FPS: dict[_EnemyState, int] = {
@@ -114,6 +123,16 @@ MIN_SPAWN_INTERVAL = 0.25
 MAX_ACTIVE_ENEMIES = 30
 MAX_ENDLESS_SPEED_MULTIPLIER = 1.80
 EPSILON = 0.0001
+MIN_ENEMY_PATH_GAP = 30.0
+MIN_ENEMY_SPAWN_GAP = 34.0
+
+
+FINAL_BOSS_WAVE = 11
+FINAL_BOSS_KIND = EnemyKind.ENEMY_4
+
+
+def is_final_boss_wave(wave_number: int) -> bool:
+    return wave_number == FINAL_BOSS_WAVE
 
 
 def wave_plan_for(wave_number: int) -> tuple[EnemyKind, ...]:
@@ -125,15 +144,21 @@ def wave_plan_for(wave_number: int) -> tuple[EnemyKind, ...]:
 
     stage = wave_number - 4
 
-    scouts = 6 + stage * 2
-    brutes = 3 + stage
-    golems = 1 + stage // 2
+    scouts = 5 + stage
+    brutes = 2 + stage // 2
+    golems = 1 + stage // 3
+    boars = 2 + stage // 2
+    beetles = 1 + stage // 3
+    rogues = 2 + stage
     bosses = 1 if wave_number % 3 == 0 else 0
 
     return (
         (EnemyKind.ENEMY_1,) * scouts
         + (EnemyKind.ENEMY_2,) * brutes
         + (EnemyKind.ENEMY_3,) * golems
+        + (EnemyKind.ENEMY_5,) * boars
+        + (EnemyKind.ENEMY_6,) * beetles
+        + (EnemyKind.ENEMY_7,) * rogues
         + (EnemyKind.ENEMY_4,) * bosses
     )
 
@@ -174,6 +199,7 @@ class _EnemyRuntime:
     speed: float
     reward: int
     base_damage: int
+    path_progress: float = 0.0
     facing: Facing = Facing.DOWN
     last_move_direction: Facing = Facing.DOWN
     state: _EnemyState = _EnemyState.WALKING
@@ -205,14 +231,20 @@ class EnemySystem:
 
     def update(self, delta_time: float) -> list[GameEvent]:
         delta_time = max(0.0, delta_time)
+
         events: list[GameEvent] = []
 
         self._spawn_cooldown -= delta_time
         self._spawn_ready_enemies()
 
         survivors: list[_EnemyRuntime] = []
+        ordered_enemies = sorted(
+            self._enemies,
+            key=lambda enemy: enemy.path_progress,
+            reverse=True,
+        )
 
-        for enemy in self._enemies:
+        for enemy in ordered_enemies:
             enemy.animation_time += delta_time
 
             if enemy.state == _EnemyState.DYING:
@@ -235,7 +267,13 @@ class EnemySystem:
                     survivors.append(enemy)
                 continue
 
-            if self._move(enemy, delta_time):
+            step_distance = self._allowed_step_distance(enemy, delta_time)
+
+            if step_distance <= EPSILON:
+                survivors.append(enemy)
+                continue
+
+            if self._move_distance(enemy, step_distance):
                 enemy.state = _EnemyState.ATTACKING
                 enemy.animation_time = 0.0
 
@@ -253,7 +291,6 @@ class EnemySystem:
             self._active_wave = None
 
         return events
-
     def apply_damage(self, commands: list[DamageCommand]) -> list[GameEvent]:
         damage_by_target: dict[str, list[int]] = {}
 
@@ -387,8 +424,24 @@ class EnemySystem:
             and self._spawn_cooldown <= 0
             and len(self._enemies) < MAX_ACTIVE_ENEMIES
         ):
+            if not self._can_spawn_at_start():
+                self._spawn_cooldown = max(self._spawn_cooldown, 0.05)
+                break
+
             self._spawn(self._queue.pop(0))
             self._spawn_cooldown += self._wave_settings.spawn_interval
+    def _can_spawn_at_start(self) -> bool:
+        if not self._route:
+            return False
+
+        for enemy in self._enemies:
+            if enemy.state == _EnemyState.DYING:
+                continue
+
+            if enemy.path_progress < MIN_ENEMY_SPAWN_GAP:
+                return False
+
+        return True
 
     def _spawn(self, kind: EnemyKind) -> None:
         definition = ENEMY_DEFINITIONS[kind]
@@ -407,6 +460,9 @@ class EnemySystem:
         if kind == EnemyKind.ENEMY_1:
             speed *= 1.18
 
+        if kind == EnemyKind.ENEMY_7:
+            speed *= 1.12
+
         reward = max(
             1,
             round(
@@ -422,6 +478,7 @@ class EnemySystem:
                 position=self._route[0],
                 path=self._route,
                 path_index=1,
+                path_progress=0.0,
                 health=max_health,
                 max_health=max_health,
                 speed=speed,
@@ -434,13 +491,44 @@ class EnemySystem:
 
         self._next_id += 1
 
+    def _allowed_step_distance(
+        self,
+        enemy: _EnemyRuntime,
+        delta_time: float,
+    ) -> float:
+        step_distance = enemy.speed * delta_time
+        nearest_ahead_gap: float | None = None
+
+        for other in self._enemies:
+            if other is enemy or other.state != _EnemyState.WALKING:
+                continue
+
+            gap = other.path_progress - enemy.path_progress
+
+            if gap <= 0:
+                continue
+
+            if nearest_ahead_gap is None or gap < nearest_ahead_gap:
+                nearest_ahead_gap = gap
+
+        if nearest_ahead_gap is None:
+            return step_distance
+
+        return min(
+            step_distance,
+            max(0.0, nearest_ahead_gap - MIN_ENEMY_PATH_GAP),
+        )
+
     @staticmethod
     def _move(enemy: _EnemyRuntime, delta_time: float) -> bool:
-        distance_left = enemy.speed * delta_time
+        return EnemySystem._move_distance(enemy, enemy.speed * delta_time)
+
+    @staticmethod
+    def _move_distance(enemy: _EnemyRuntime, distance: float) -> bool:
+        distance_left = max(0.0, distance)
 
         while distance_left > 0 and enemy.path_index < len(enemy.path):
             target = enemy.path[enemy.path_index]
-
             delta_x = target.x - enemy.position.x
             delta_y = target.y - enemy.position.y
             segment_distance = enemy.position.distance_to(target)
@@ -463,14 +551,15 @@ class EnemySystem:
                     target,
                     distance_left,
                 )
+                enemy.path_progress += distance_left
                 return False
 
             enemy.position = target
             enemy.path_index += 1
+            enemy.path_progress += segment_distance
             distance_left -= segment_distance
 
         return enemy.path_index >= len(enemy.path)
-
     @staticmethod
     def _reduce_damage(kind: EnemyKind, amount: int) -> int:
         armor_by_kind = {
@@ -478,6 +567,9 @@ class EnemySystem:
             EnemyKind.ENEMY_2: 2,
             EnemyKind.ENEMY_3: 6,
             EnemyKind.ENEMY_4: 4,
+            EnemyKind.ENEMY_5: 4,
+            EnemyKind.ENEMY_6: 8,
+            EnemyKind.ENEMY_7: 1,
         }
 
         return max(1, amount - armor_by_kind[kind])

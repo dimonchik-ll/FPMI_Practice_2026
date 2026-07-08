@@ -6,7 +6,7 @@ from core.game_shell import CoreWorld
 from core.levels import LEVEL_PATHS
 from core.map_model import GameMap
 from core.map_renderer import MapRenderer
-from enemies.api import EnemySystem, WAVE_PLANS
+from enemies.api import EnemySystem
 from shared.contracts import (
     GameEventKind,
     GameSnapshot,
@@ -20,7 +20,7 @@ from ui.economy import Economy
 from ui.main_menu import MainMenu, MainMenuActionKind, MapMenuOption
 
 
-MAX_WAVES = max(WAVE_PLANS)
+CAMPAIGN_MAX_WAVES = 10
 MENU_SIZE = (1280, 720)
 
 
@@ -243,7 +243,7 @@ class TowerDefenseApp:
             elif event.kind == GameEventKind.ENEMY_REACHED_GOAL:
                 self.economy.take_base_damage(int(event.payload["damage"]))
             elif event.kind == GameEventKind.WAVE_COMPLETED:
-                if self.wave_number >= MAX_WAVES:
+                if self.wave_number >= CAMPAIGN_MAX_WAVES:
                     self.victory = True
                 else:
                     self.wave_number += 1
