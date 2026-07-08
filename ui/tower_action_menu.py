@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from enum import Enum
+from math import hypot
+
 import pygame
 
 from shared.contracts import (
@@ -9,34 +13,61 @@ from shared.contracts import (
     UiAction,
     UiActionKind,
     next_tower_kind,
-    tower_max_level,
 )
 from ui.layout import UiLayout
 from ui.theme import Color, UiFonts, UiTheme
-from ui.widgets import draw_centered_text, draw_text
+from ui.widgets import draw_centered_text, draw_text, wrap_text
 
 
-_ATTACK_TYPE_LABELS = {
-    "single": "Одиночная",
-    "piercing": "Пробивающая",
-    "splash": "По области",
-}
+class _DialogKind(str, Enum):
+    UPGRADE = "upgrade"
+    REMOVE = "remove"
+
+
+class _ActionButton(str, Enum):
+    UPGRADE = "upgrade"
+    DELETE = "delete"
+
+
+@dataclass(frozen=True, slots=True)
+class _ButtonStyle:
+    fill: Color
+    border: Color
+    text: Color
 
 
 class TowerActionMenu:
-    """Modal menu displayed after a right-click on an installed tower."""
+    """Compact animated action menu displayed below a tower after right-click."""
 
-    _WIDTH = 332
-    _HEIGHT = 354
-    _PADDING = 16
-    _ROW_GAP = 5
-    _BUTTON_HEIGHT = 40
+    _BUTTON_RADIUS = 20
+    _HOVER_RADIUS_BONUS = 4
+    _PRESSED_RADIUS_BONUS = -2
+    _BUTTON_GAP = 10
+    _BUTTON_Y_OFFSET = 50
+    _MAP_MARGIN = 10
+    _SHADOW_OFFSET = 3
+    _ANIMATION_SPEED = 14.0
+
+    _DIALOG_WIDTH = 440
+    _DIALOG_MIN_HEIGHT = 218
+    _DIALOG_PADDING = 18
+    _DIALOG_BUTTON_WIDTH = 136
+    _DIALOG_BUTTON_HEIGHT = 40
+    _DIALOG_BUTTON_GAP = 14
 
     def __init__(self, layout: UiLayout, theme: UiTheme, fonts: UiFonts) -> None:
         self._layout = layout
         self._theme = theme
         self._fonts = fonts
         self._tower_id: str | None = None
+        self._dialog_kind: _DialogKind | None = None
+        self._hovered_button: _ActionButton | None = None
+        self._pressed_button: _ActionButton | None = None
+        self._animation_progress: dict[_ActionButton, float] = {
+            _ActionButton.UPGRADE: 0.0,
+            _ActionButton.DELETE: 0.0,
+        }
+        self._last_animation_tick = pygame.time.get_ticks()
 
     @property
     def is_open(self) -> bool:
@@ -44,18 +75,28 @@ class TowerActionMenu:
 
     def open(self, tower_identifier: str) -> None:
         self._tower_id = tower_identifier
+        self._dialog_kind = None
+        self._hovered_button = None
+        self._pressed_button = None
+        for button in self._animation_progress:
+            self._animation_progress[button] = 0.0
+        self._last_animation_tick = pygame.time.get_ticks()
 
     def close(self) -> None:
         self._tower_id = None
+        self._dialog_kind = None
+        self._hovered_button = None
+        self._pressed_button = None
 
     def sync(self, snapshot: GameSnapshot) -> None:
         if self._tower_id is None:
             return
+
         if self._selected_tower(snapshot) is None:
             self.close()
 
     def contains_point(self, position: tuple[int, int]) -> bool:
-        return self.is_open and self._menu_rect().collidepoint(position)
+        return self.is_open
 
     def handle_event(
         self,
@@ -64,31 +105,100 @@ class TowerActionMenu:
     ) -> UiAction | None:
         self.sync(snapshot)
         tower = self._selected_tower(snapshot)
+
         if tower is None:
             return None
 
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            if self._dialog_kind is not None:
+                self._dialog_kind = None
+                return None
+
             return UiAction(UiActionKind.CLOSE_TOWER_MENU)
 
-        if event.type != pygame.MOUSEBUTTONDOWN or event.button != 1:
+        if self._dialog_kind is not None:
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                return self._handle_dialog_click(event.pos, tower, snapshot)
             return None
 
-        menu = self._menu_rect()
-        if not menu.collidepoint(event.pos):
-            return UiAction(UiActionKind.CLOSE_TOWER_MENU)
+        if event.type == pygame.MOUSEMOTION:
+            self._hovered_button = self._button_at_position(tower, event.pos)
+            return None
 
-        if self._close_button_rect().collidepoint(event.pos):
-            return UiAction(UiActionKind.CLOSE_TOWER_MENU)
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            clicked_button = self._button_at_position(tower, event.pos)
+            if clicked_button is None:
+                return UiAction(UiActionKind.CLOSE_TOWER_MENU)
 
-        if self._upgrade_button_rect().collidepoint(event.pos):
+            self._pressed_button = clicked_button
+            self._hovered_button = clicked_button
+            return None
+
+        if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            released_button = self._button_at_position(tower, event.pos)
+            pressed_button = self._pressed_button
+            self._pressed_button = None
+
+            if pressed_button is None:
+                return None
+
+            if released_button != pressed_button:
+                return None
+
+            if pressed_button == _ActionButton.UPGRADE:
+                if tower.can_upgrade:
+                    self._dialog_kind = _DialogKind.UPGRADE
+                return None
+
+            if pressed_button == _ActionButton.DELETE:
+                self._dialog_kind = _DialogKind.REMOVE
+                return None
+
+        return None
+
+    def draw(self, surface: pygame.Surface, snapshot: GameSnapshot) -> None:
+        self.sync(snapshot)
+        tower = self._selected_tower(snapshot)
+
+        if tower is None:
+            return
+
+        if self._dialog_kind is not None:
+            self._draw_map_shade(surface)
+            self._draw_radial_buttons(surface, tower, snapshot, dimmed=True)
+            self._draw_confirmation_dialog(surface, tower, snapshot)
+            return
+
+        self._hovered_button = self._button_at_position(tower, pygame.mouse.get_pos())
+        self._update_animation()
+        self._draw_radial_buttons(surface, tower, snapshot, dimmed=False)
+
+    def _handle_dialog_click(
+        self,
+        position: tuple[int, int],
+        tower: TowerView,
+        snapshot: GameSnapshot,
+    ) -> UiAction | None:
+        if self._dialog_cancel_rect().collidepoint(position):
+            self._dialog_kind = None
+            return None
+
+        if not self._dialog_ok_rect().collidepoint(position):
+            return None
+
+        dialog_kind = self._dialog_kind
+        self._dialog_kind = None
+
+        if dialog_kind == _DialogKind.UPGRADE:
             if self._can_upgrade(tower, snapshot):
                 return UiAction(
                     UiActionKind.UPGRADE_TOWER,
                     {"tower_id": tower.identifier},
                 )
+
             return None
 
-        if self._delete_button_rect().collidepoint(event.pos):
+        if dialog_kind == _DialogKind.REMOVE:
             return UiAction(
                 UiActionKind.REMOVE_TOWER,
                 {"tower_id": tower.identifier},
@@ -96,175 +206,479 @@ class TowerActionMenu:
 
         return None
 
-    def draw(self, surface: pygame.Surface, snapshot: GameSnapshot) -> None:
-        self.sync(snapshot)
-        tower = self._selected_tower(snapshot)
-        if tower is None:
-            return
+    def _draw_radial_buttons(
+        self,
+        surface: pygame.Surface,
+        tower: TowerView,
+        snapshot: GameSnapshot,
+        *,
+        dimmed: bool,
+    ) -> None:
+        upgrade_center, delete_center = self._button_centers(tower)
 
-        map_area = pygame.Rect(0, 0, self._layout.map_width, self._layout.height)
-        shade = pygame.Surface(map_area.size, pygame.SRCALPHA)
-        shade.fill((8, 13, 19, 118))
-        surface.blit(shade, map_area.topleft)
-
-        menu = self._menu_rect()
-        pygame.draw.rect(surface, self._theme.panel_background, menu, border_radius=12)
-        pygame.draw.rect(surface, self._theme.panel_border, menu, width=2, border_radius=12)
-
-        title = TOWER_DEFINITIONS[tower.kind].title.upper()
-        draw_text(
+        self._draw_circle_button(
             surface,
-            title,
-            self._fonts.section,
-            self._theme.title_text,
-            (menu.x + self._PADDING, menu.y + 12),
+            upgrade_center,
+            self._upgrade_button_style(tower, snapshot, dimmed=dimmed),
+            icon="upgrade",
+            action_button=_ActionButton.UPGRADE,
+            disabled=not tower.can_upgrade,
+            dimmed=dimmed,
         )
-
-        close_rect = self._close_button_rect()
-        pygame.draw.rect(surface, self._theme.default_card, close_rect, border_radius=6)
-        pygame.draw.rect(surface, self._theme.panel_border, close_rect, width=1, border_radius=6)
-        draw_centered_text(surface, "×", self._fonts.body, self._theme.body_text, close_rect)
-
-        y = menu.y + 56
-        draw_text(
+        self._draw_circle_button(
             surface,
-            "ХАРАКТЕРИСТИКИ",
-            self._fonts.small,
-            self._theme.muted_text,
-            (menu.x + self._PADDING, y),
+            delete_center,
+            self._delete_button_style(dimmed=dimmed),
+            icon="delete",
+            action_button=_ActionButton.DELETE,
+            disabled=False,
+            dimmed=dimmed,
         )
-        y += self._fonts.small.get_linesize() + self._ROW_GAP + 2
 
-        for label, value in self._stat_rows(tower):
-            draw_text(
-                surface,
-                label,
-                self._fonts.small,
-                self._theme.muted_text,
-                (menu.x + self._PADDING, y),
+    def _draw_circle_button(
+        self,
+        surface: pygame.Surface,
+        center: tuple[int, int],
+        style: _ButtonStyle,
+        *,
+        icon: str,
+        action_button: _ActionButton,
+        disabled: bool,
+        dimmed: bool,
+    ) -> None:
+        progress = 0.0 if dimmed else self._animation_progress[action_button]
+        radius = self._animated_radius(action_button, progress, dimmed=dimmed)
+        center = self._animated_center(center, action_button)
+
+        shadow_alpha = 92 if dimmed else 126 + int(progress * 42)
+        shadow_radius = radius + 2 + int(progress * 2)
+        shadow = pygame.Surface((shadow_radius * 2 + 8, shadow_radius * 2 + 8), pygame.SRCALPHA)
+        pygame.draw.circle(
+            shadow,
+            (0, 0, 0, shadow_alpha),
+            (shadow.get_width() // 2 + self._SHADOW_OFFSET, shadow.get_height() // 2 + self._SHADOW_OFFSET),
+            shadow_radius,
+        )
+        surface.blit(
+            shadow,
+            (center[0] - shadow.get_width() // 2, center[1] - shadow.get_height() // 2),
+        )
+
+        if progress > 0.03 and not dimmed:
+            glow_radius = radius + 5
+            glow = pygame.Surface((glow_radius * 2 + 4, glow_radius * 2 + 4), pygame.SRCALPHA)
+            pygame.draw.circle(
+                glow,
+                (*style.border, int(38 + progress * 58)),
+                (glow.get_width() // 2, glow.get_height() // 2),
+                glow_radius,
+                width=2,
             )
-            value_width = self._fonts.small.size(value)[0]
-            draw_text(
-                surface,
-                value,
-                self._fonts.small,
-                self._theme.body_text,
-                (menu.right - self._PADDING - value_width, y),
+            surface.blit(
+                glow,
+                (center[0] - glow.get_width() // 2, center[1] - glow.get_height() // 2),
             )
-            y += self._fonts.small.get_linesize() + self._ROW_GAP
 
-        self._draw_upgrade_button(surface, tower, snapshot)
-        self._draw_delete_button(surface)
+        pygame.draw.circle(surface, style.fill, center, radius)
+        pygame.draw.circle(surface, style.border, center, radius, width=3 if progress > 0.35 else 2)
 
-    def _selected_tower(self, snapshot: GameSnapshot) -> TowerView | None:
-        if self._tower_id is None:
-            return None
-        return next(
-            (tower for tower in snapshot.towers if tower.identifier == self._tower_id),
-            None,
+        if icon == "upgrade":
+            self._draw_upgrade_icon(surface, center, style.text, disabled=disabled, scale=radius / self._BUTTON_RADIUS)
+        else:
+            self._draw_delete_icon(surface, center, style.text, scale=radius / self._BUTTON_RADIUS)
+
+    def _draw_upgrade_icon(
+        self,
+        surface: pygame.Surface,
+        center: tuple[int, int],
+        color: Color,
+        *,
+        disabled: bool,
+        scale: float,
+    ) -> None:
+        x, y = center
+        arrow_color = self._theme.muted_text if disabled else color
+        height = max(8, int(11 * scale))
+        half = max(6, int(8 * scale))
+        stem_half = max(2, int(3 * scale))
+
+        pygame.draw.polygon(
+            surface,
+            arrow_color,
+            (
+                (x, y - height),
+                (x - half, y - 1),
+                (x - stem_half, y - 1),
+                (x - stem_half, y + height),
+                (x + stem_half, y + height),
+                (x + stem_half, y - 1),
+                (x + half, y - 1),
+            ),
         )
 
-    def _menu_rect(self) -> pygame.Rect:
-        width = min(self._WIDTH, max(240, self._layout.map_width - 28))
-        height = self._HEIGHT
-        x = max(14, (self._layout.map_width - width) // 2)
-        y = max(28, (self._layout.height - height) // 2)
-        return pygame.Rect(x, y, width, height)
+    def _draw_delete_icon(
+        self,
+        surface: pygame.Surface,
+        center: tuple[int, int],
+        color: Color,
+        *,
+        scale: float,
+    ) -> None:
+        x, y = center
+        body_width = max(11, int(14 * scale))
+        body_height = max(12, int(15 * scale))
+        body = pygame.Rect(0, 0, body_width, body_height)
+        body.center = (x, y + int(3 * scale))
+        lid = pygame.Rect(0, 0, body_width + 4, max(3, int(3 * scale)))
+        lid.center = (x, y - int(7 * scale))
 
-    def _close_button_rect(self) -> pygame.Rect:
-        menu = self._menu_rect()
-        size = 30
-        return pygame.Rect(menu.right - self._PADDING - size, menu.y + 12, size, size)
-
-    def _upgrade_button_rect(self) -> pygame.Rect:
-        menu = self._menu_rect()
-        return pygame.Rect(
-            menu.x + self._PADDING,
-            menu.bottom - self._PADDING * 2 - self._BUTTON_HEIGHT * 2,
-            menu.width - self._PADDING * 2,
-            self._BUTTON_HEIGHT,
+        line_width = max(1, int(2 * scale))
+        pygame.draw.rect(surface, color, lid, border_radius=1)
+        pygame.draw.line(
+            surface,
+            color,
+            (x - int(4 * scale), lid.y - int(3 * scale)),
+            (x + int(4 * scale), lid.y - int(3 * scale)),
+            max(2, line_width),
         )
+        pygame.draw.rect(surface, color, body, width=line_width, border_radius=2)
+        pygame.draw.line(surface, color, (x - int(3 * scale), body.y + 4), (x - int(3 * scale), body.bottom - 4), line_width)
+        pygame.draw.line(surface, color, (x + int(3 * scale), body.y + 4), (x + int(3 * scale), body.bottom - 4), line_width)
 
-    def _delete_button_rect(self) -> pygame.Rect:
-        upgrade = self._upgrade_button_rect()
-        return pygame.Rect(
-            upgrade.x,
-            upgrade.bottom + self._PADDING,
-            upgrade.width,
-            self._BUTTON_HEIGHT,
-        )
-
-    @staticmethod
-    def _stat_rows(tower: TowerView) -> tuple[tuple[str, str], ...]:
-        return (
-            ("Уровень", f"{tower.level} / {tower_max_level()}"),
-            ("Урон", str(tower.damage)),
-            ("Дальность", str(round(tower.attack_range))),
-            ("Скорость", f"{tower.attacks_per_second:.1f}/с"),
-            ("Атака", _ATTACK_TYPE_LABELS.get(tower.attack_type, tower.attack_type)),
-        )
-
-    def _can_upgrade(self, tower: TowerView, snapshot: GameSnapshot) -> bool:
-        return tower.can_upgrade and snapshot.player.money >= (tower.upgrade_cost or 0)
-
-    def _upgrade_label(self, tower: TowerView, snapshot: GameSnapshot) -> str:
-        if not tower.can_upgrade:
-            return "МАКСИМАЛЬНЫЙ УРОВЕНЬ"
-
-        cost = tower.upgrade_cost or 0
-        next_kind = next_tower_kind(tower.kind)
-        next_title = (
-            TOWER_DEFINITIONS[next_kind].title
-            if next_kind is not None
-            else "следующий уровень"
-        )
-        if snapshot.player.money < cost:
-            return f"НЕ ХВАТАЕТ {cost - snapshot.player.money} МОНЕТ"
-        return f"УЛУЧШИТЬ: {next_title} — {cost} МОН."
-
-    def _draw_upgrade_button(
+    def _draw_confirmation_dialog(
         self,
         surface: pygame.Surface,
         tower: TowerView,
         snapshot: GameSnapshot,
     ) -> None:
-        rect = self._upgrade_button_rect()
-        can_upgrade = self._can_upgrade(tower, snapshot)
+        dialog = self._dialog_rect()
 
-        if can_upgrade:
-            fill: Color = self._theme.selected_card
-            border: Color = self._theme.selected_card_border
-            text_color: Color = self._theme.body_text
-        elif tower.can_upgrade:
-            fill = self._theme.unavailable_card
-            border = self._theme.unavailable_card_border
-            text_color = self._theme.muted_text
-        else:
-            fill = self._theme.default_card
-            border = self._theme.panel_border
-            text_color = self._theme.muted_text
+        pygame.draw.rect(
+            surface,
+            self._theme.panel_background,
+            dialog,
+            border_radius=14,
+        )
+        pygame.draw.rect(
+            surface,
+            self._theme.panel_border,
+            dialog,
+            width=2,
+            border_radius=14,
+        )
 
-        pygame.draw.rect(surface, fill, rect, border_radius=8)
-        pygame.draw.rect(surface, border, rect, width=2, border_radius=8)
+        title, description, accent = self._dialog_content(tower, snapshot)
+        y = dialog.y + self._DIALOG_PADDING
+
+        draw_text(
+            surface,
+            title,
+            self._fonts.section,
+            self._theme.title_text,
+            (dialog.x + self._DIALOG_PADDING, y),
+        )
+        y += self._fonts.section.get_linesize() + 10
+
+        text_width = dialog.width - self._DIALOG_PADDING * 2
+        for line in wrap_text(description, self._fonts.small, text_width):
+            draw_text(
+                surface,
+                line,
+                self._fonts.small,
+                self._theme.body_text,
+                (dialog.x + self._DIALOG_PADDING, y),
+            )
+            y += self._fonts.small.get_linesize()
+
+        if accent is not None:
+            y += 8
+            for line in wrap_text(accent, self._fonts.small, text_width):
+                draw_text(
+                    surface,
+                    line,
+                    self._fonts.small,
+                    (235, 202, 118),
+                    (dialog.x + self._DIALOG_PADDING, y),
+                )
+                y += self._fonts.small.get_linesize()
+
+        self._draw_dialog_button(
+            surface,
+            self._dialog_cancel_rect(),
+            "ОТМЕНА",
+            _ButtonStyle(
+                fill=self._theme.default_card,
+                border=self._theme.default_card_border,
+                text=self._theme.body_text,
+            ),
+        )
+        self._draw_dialog_button(
+            surface,
+            self._dialog_ok_rect(),
+            "ОК",
+            _ButtonStyle(
+                fill=self._ok_button_fill(),
+                border=self._ok_button_border(),
+                text=self._theme.body_text,
+            ),
+        )
+
+    def _dialog_content(
+        self,
+        tower: TowerView,
+        snapshot: GameSnapshot,
+    ) -> tuple[str, str, str | None]:
+        if self._dialog_kind == _DialogKind.REMOVE:
+            return (
+                "Удалить башню?",
+                (
+                    f"Башня {TOWER_DEFINITIONS[tower.kind].title} будет удалена, "
+                    "а клетка строительства снова станет свободной. Деньги за удаление "
+                    "сейчас не возвращаются."
+                ),
+                None,
+            )
+
+        next_kind = next_tower_kind(tower.kind)
+        cost = tower.upgrade_cost or 0
+
+        if next_kind is None:
+            return (
+                "Улучшение недоступно",
+                "Эта башня уже находится на максимальном уровне.",
+                None,
+            )
+
+        current = TOWER_DEFINITIONS[tower.kind]
+        upgraded = TOWER_DEFINITIONS[next_kind]
+        missing_money = max(0, cost - snapshot.player.money)
+
+        description = (
+            f"Улучшить {current.title} до {upgraded.title}? "
+            f"Стоимость улучшения: {cost} монет."
+        )
+        accent = (
+            f"Урон: {current.damage} → {upgraded.damage}; "
+            f"дальность: {int(current.attack_range)} → {int(upgraded.attack_range)}; "
+            f"скорость: {current.attacks_per_second:.1f}/с → "
+            f"{upgraded.attacks_per_second:.1f}/с."
+        )
+
+        if missing_money > 0:
+            accent += f" Не хватает {missing_money} монет."
+
+        return "Подтвердить улучшение", description, accent
+
+    def _draw_map_shade(self, surface: pygame.Surface) -> None:
+        map_area = pygame.Rect(0, 0, self._layout.map_width, self._layout.height)
+        shade = pygame.Surface(map_area.size, pygame.SRCALPHA)
+        shade.fill((8, 13, 19, 138))
+        surface.blit(shade, map_area.topleft)
+
+    def _draw_dialog_button(
+        self,
+        surface: pygame.Surface,
+        rect: pygame.Rect,
+        label: str,
+        style: _ButtonStyle,
+    ) -> None:
+        pygame.draw.rect(surface, style.fill, rect, border_radius=8)
+        pygame.draw.rect(surface, style.border, rect, width=2, border_radius=8)
         draw_centered_text(
             surface,
-            self._upgrade_label(tower, snapshot),
+            label,
             self._fonts.small,
-            text_color,
+            style.text,
             rect,
         )
 
-    def _draw_delete_button(self, surface: pygame.Surface) -> None:
-        rect = self._delete_button_rect()
-        fill: Color = (116, 58, 57)
-        border: Color = (223, 137, 128)
+    def _selected_tower(self, snapshot: GameSnapshot) -> TowerView | None:
+        if self._tower_id is None:
+            return None
 
-        pygame.draw.rect(surface, fill, rect, border_radius=8)
-        pygame.draw.rect(surface, border, rect, width=2, border_radius=8)
-        draw_centered_text(
-            surface,
-            "УДАЛИТЬ БАШНЮ",
-            self._fonts.small,
-            self._theme.body_text,
-            rect,
+        return next(
+            (tower for tower in snapshot.towers if tower.identifier == self._tower_id),
+            None,
+        )
+
+    def _button_centers(self, tower: TowerView) -> tuple[tuple[int, int], tuple[int, int]]:
+        radius = self._BUTTON_RADIUS + self._HOVER_RADIUS_BONUS
+        map_rect = pygame.Rect(0, 0, self._layout.map_width, self._layout.height)
+
+        left_x = int(tower.position.x - self._BUTTON_RADIUS - self._BUTTON_GAP // 2)
+        right_x = int(tower.position.x + self._BUTTON_RADIUS + self._BUTTON_GAP // 2)
+        center_y = int(tower.position.y + self._BUTTON_Y_OFFSET)
+
+        if center_y + radius > map_rect.bottom - self._MAP_MARGIN:
+            center_y = int(tower.position.y - self._BUTTON_Y_OFFSET)
+
+        min_x = map_rect.left + self._MAP_MARGIN + radius
+        max_x = map_rect.right - self._MAP_MARGIN - radius
+
+        if left_x < min_x:
+            shift = min_x - left_x
+            left_x += shift
+            right_x += shift
+
+        if right_x > max_x:
+            shift = right_x - max_x
+            left_x -= shift
+            right_x -= shift
+
+        center_y = max(
+            map_rect.top + self._MAP_MARGIN + radius,
+            min(center_y, map_rect.bottom - self._MAP_MARGIN - radius),
+        )
+
+        return (left_x, center_y), (right_x, center_y)
+
+    def _dialog_rect(self) -> pygame.Rect:
+        width = min(self._DIALOG_WIDTH, self._layout.map_width - 56)
+        height = self._DIALOG_MIN_HEIGHT
+        return pygame.Rect(
+            (self._layout.map_width - width) // 2,
+            (self._layout.height - height) // 2,
+            width,
+            height,
+        )
+
+    def _dialog_cancel_rect(self) -> pygame.Rect:
+        dialog = self._dialog_rect()
+        total_width = self._DIALOG_BUTTON_WIDTH * 2 + self._DIALOG_BUTTON_GAP
+        x = dialog.centerx - total_width // 2
+        y = dialog.bottom - self._DIALOG_PADDING - self._DIALOG_BUTTON_HEIGHT
+        return pygame.Rect(x, y, self._DIALOG_BUTTON_WIDTH, self._DIALOG_BUTTON_HEIGHT)
+
+    def _dialog_ok_rect(self) -> pygame.Rect:
+        cancel = self._dialog_cancel_rect()
+        return pygame.Rect(
+            cancel.right + self._DIALOG_BUTTON_GAP,
+            cancel.y,
+            self._DIALOG_BUTTON_WIDTH,
+            self._DIALOG_BUTTON_HEIGHT,
+        )
+
+    def _can_upgrade(self, tower: TowerView, snapshot: GameSnapshot) -> bool:
+        return tower.can_upgrade and snapshot.player.money >= (tower.upgrade_cost or 0)
+
+    def _button_at_position(
+        self,
+        tower: TowerView,
+        position: tuple[int, int],
+    ) -> _ActionButton | None:
+        upgrade_center, delete_center = self._button_centers(tower)
+
+        if self._circle_contains(upgrade_center, position):
+            return _ActionButton.UPGRADE
+
+        if self._circle_contains(delete_center, position):
+            return _ActionButton.DELETE
+
+        return None
+
+    def _update_animation(self) -> None:
+        current_tick = pygame.time.get_ticks()
+        delta_seconds = max(0.0, min(0.05, (current_tick - self._last_animation_tick) / 1000.0))
+        self._last_animation_tick = current_tick
+
+        step = min(1.0, delta_seconds * self._ANIMATION_SPEED)
+        for button in self._animation_progress:
+            target = 1.0 if self._hovered_button == button else 0.0
+            value = self._animation_progress[button]
+            self._animation_progress[button] = value + (target - value) * step
+
+    def _animated_radius(
+        self,
+        action_button: _ActionButton,
+        progress: float,
+        *,
+        dimmed: bool,
+    ) -> int:
+        radius = self._BUTTON_RADIUS
+
+        if not dimmed:
+            radius += int(round(self._HOVER_RADIUS_BONUS * progress))
+
+        if self._pressed_button == action_button:
+            radius += self._PRESSED_RADIUS_BONUS
+
+        return max(15, radius)
+
+    def _animated_center(
+        self,
+        center: tuple[int, int],
+        action_button: _ActionButton,
+    ) -> tuple[int, int]:
+        if self._pressed_button == action_button:
+            return (center[0], center[1] + 1)
+
+        return center
+
+    def _upgrade_button_style(
+        self,
+        tower: TowerView,
+        snapshot: GameSnapshot,
+        *,
+        dimmed: bool,
+    ) -> _ButtonStyle:
+        if dimmed:
+            return _ButtonStyle(
+                fill=self._theme.unavailable_card,
+                border=self._theme.unavailable_card_border,
+                text=self._theme.muted_text,
+            )
+
+        if self._can_upgrade(tower, snapshot):
+            return _ButtonStyle(
+                fill=self._theme.selected_card,
+                border=self._theme.selected_card_border,
+                text=self._theme.body_text,
+            )
+
+        if tower.can_upgrade:
+            return _ButtonStyle(
+                fill=self._theme.unavailable_card,
+                border=(171, 134, 66),
+                text=(235, 202, 118),
+            )
+
+        return _ButtonStyle(
+            fill=self._theme.unavailable_card,
+            border=self._theme.unavailable_card_border,
+            text=self._theme.muted_text,
+        )
+
+    def _delete_button_style(self, *, dimmed: bool) -> _ButtonStyle:
+        if dimmed:
+            return _ButtonStyle(
+                fill=(71, 45, 49),
+                border=(116, 74, 78),
+                text=self._theme.muted_text,
+            )
+
+        return _ButtonStyle(
+            fill=(116, 58, 57),
+            border=(223, 137, 128),
+            text=self._theme.body_text,
+        )
+
+    def _ok_button_fill(self) -> Color:
+        if self._dialog_kind == _DialogKind.REMOVE:
+            return (116, 58, 57)
+
+        return self._theme.selected_card
+
+    def _ok_button_border(self) -> Color:
+        if self._dialog_kind == _DialogKind.REMOVE:
+            return (223, 137, 128)
+
+        return self._theme.selected_card_border
+
+    @staticmethod
+    def _circle_contains(
+        center: tuple[int, int],
+        position: tuple[int, int],
+    ) -> bool:
+        return hypot(position[0] - center[0], position[1] - center[1]) <= (
+            TowerActionMenu._BUTTON_RADIUS + TowerActionMenu._HOVER_RADIUS_BONUS + 2
         )

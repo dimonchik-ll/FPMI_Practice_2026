@@ -7,6 +7,7 @@ from ui.layout import UiLayout
 from ui.theme import Color, UiFonts, UiTheme
 from ui.widgets import draw_text, ellipsize, wrap_text
 
+
 _TOWER_HINTS: dict[TowerKind, str] = {
     TowerKind.ARCHER_1: "Дешёвая и быстрая башня для первых волн.",
     TowerKind.ARCHER_2: "Пробивающая стрела задевает двух врагов подряд.",
@@ -42,7 +43,6 @@ class TowerInfoPanel:
         hovered_tower: TowerKind | None,
     ) -> None:
         area = self._layout.tower_info_area()
-
         if area.height <= 0:
             return
 
@@ -56,7 +56,6 @@ class TowerInfoPanel:
 
         card_top = area.y + self._fonts.section.get_linesize() + self._HEADER_GAP
         max_card_height = area.bottom - card_top
-
         if max_card_height <= 0:
             return
 
@@ -72,7 +71,6 @@ class TowerInfoPanel:
             self._fonts.small,
             text_width,
         )
-
         visible_lines, visible_footer = self._fit_content(
             description_lines,
             footer,
@@ -81,7 +79,6 @@ class TowerInfoPanel:
         )
 
         minimum_height = self._minimum_card_height()
-
         if max_card_height < minimum_height:
             return
 
@@ -108,7 +105,6 @@ class TowerInfoPanel:
         )
 
         y = card_rect.y + self._PADDING_Y
-
         draw_text(
             surface,
             title,
@@ -116,7 +112,6 @@ class TowerInfoPanel:
             self._theme.title_text,
             (card_rect.x + self._PADDING_X, y),
         )
-
         y += self._fonts.body.get_linesize() + self._TEXT_GAP
 
         for line in visible_lines:
@@ -131,7 +126,6 @@ class TowerInfoPanel:
 
         if visible_footer is not None:
             y += self._TEXT_GAP
-
             draw_text(
                 surface,
                 visible_footer,
@@ -148,19 +142,19 @@ class TowerInfoPanel:
         if tower_kind is None:
             return (
                 "Выберите башню",
-                "Нажмите на карточку ниже, чтобы увидеть характеристики.",
-                None,
-                self._theme.body_text,
+                "Нажмите на карточку ниже, чтобы увидеть характеристики",
+                "ЛКМ - построить. ПКМ — изменить",
+                (171, 222, 171),
             )
 
         definition = TOWER_DEFINITIONS[tower_kind]
         missing_money = definition.cost - snapshot.player.money
 
         if missing_money > 0:
-            footer = f"Не хватает {missing_money} монет."
+            footer = f"Не хватает {missing_money} монет"
             footer_color: Color = (238, 150, 132)
         else:
-            footer = "ЛКМ по месту строительства."
+            footer = "ЛКМ - построить. ПКМ - изменить"
             footer_color = (171, 222, 171)
 
         return (
@@ -178,12 +172,10 @@ class TowerInfoPanel:
         text_width: int,
     ) -> tuple[tuple[str, ...], str | None]:
         full_height = self._card_height(lines, footer)
-
         if full_height <= max_height:
             return lines, footer
 
         no_footer_height = self._card_height(lines, None)
-
         if no_footer_height <= max_height:
             return lines, None
 
@@ -192,17 +184,14 @@ class TowerInfoPanel:
             + self._fonts.body.get_linesize()
             + self._TEXT_GAP
         )
-
         max_lines = max(
             0,
             (max_height - fixed_height) // self._fonts.small.get_linesize(),
         )
-
         if max_lines == 0:
             return (), None
 
         visible_lines = list(lines[:max_lines])
-
         if len(lines) > max_lines:
             visible_lines[-1] = ellipsize(
                 visible_lines[-1] + "…",
@@ -220,10 +209,7 @@ class TowerInfoPanel:
         lines: tuple[str, ...],
         footer: str | None,
     ) -> int:
-        height = (
-            self._PADDING_Y * 2
-            + self._fonts.body.get_linesize()
-        )
+        height = self._PADDING_Y * 2 + self._fonts.body.get_linesize()
 
         if lines:
             height += self._TEXT_GAP

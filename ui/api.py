@@ -59,7 +59,16 @@ class UiSystem:
         if tower_menu_action is not None:
             if tower_menu_action.kind == UiActionKind.CLOSE_TOWER_MENU:
                 self.close_tower_menu()
+
             return tower_menu_action
+
+        if self._tower_action_menu.is_open and event.type in (
+            pygame.MOUSEBUTTONDOWN,
+            pygame.MOUSEBUTTONUP,
+            pygame.MOUSEMOTION,
+            pygame.MOUSEWHEEL,
+        ):
+            return None
 
         if event.type == pygame.KEYDOWN and event.key in (pygame.K_ESCAPE, pygame.K_p):
             return UiAction(UiActionKind.PAUSE)
@@ -68,6 +77,7 @@ class UiSystem:
             action = component.handle_event(event, snapshot)
             if action is not None:
                 return action
+
         return None
 
     def is_overlay_point(self, position: tuple[int, int]) -> bool:
@@ -76,6 +86,7 @@ class UiSystem:
             snapshot.paused or snapshot.game_over or snapshot.victory
         ):
             return True
+
         return (
             self._game_stats.contains_point(position)
             or self._tower_action_menu.contains_point(position)
