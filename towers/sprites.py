@@ -168,12 +168,7 @@ class TowerRenderer:
             return None
 
         frame_count = max(1, sheet.get_width() // _UNIT_FRAME_SIZE)
-        frames_per_second = 12 if is_attacking else 6
-        frame_index = (
-            int(tower.animation_time * frames_per_second) % frame_count
-            if is_attacking
-            else 0
-        )
+        frame_index = self._unit_frame_index(tower, frame_count, is_attacking)
         cache_key = (tower.kind, tower.facing, is_attacking, flip_x, frame_index)
         cached = self._unit_frames.get(cache_key)
         if cached is not None:
@@ -193,8 +188,11 @@ class TowerRenderer:
 
             frame = pygame.transform.flip(frame, True, False)
 
-        frame = self._trim_unit_bottom_padding(frame)
-        frame = self._scale_unit_frame_for_kind(tower.kind, frame)
+        if tower.kind.value.startswith("mage_"):
+            frame = self._scale_unit_frame_for_kind(tower.kind, frame)
+        else:
+            frame = self._trim_unit_bottom_padding(frame)
+            frame = self._scale_unit_frame_for_kind(tower.kind, frame)
         self._unit_frames[cache_key] = frame
         return frame
 
@@ -273,6 +271,24 @@ class TowerRenderer:
         return "idle",
 
     @staticmethod
+    def _unit_frame_index(
+        tower: TowerRuntime,
+        frame_count: int,
+        is_attacking: bool,
+    ) -> int:
+        if not is_attacking:
+            return 0
+
+        # Mage directional sheets have noticeably different silhouettes between
+        # animation frames, especially in the up-facing attack. Rendering the
+        # first attack pose keeps the mage size stable while still switching from
+        # idle to attack only when a shot is actually fired.
+        if tower.kind.value.startswith("mage_"):
+            return 0
+
+        return int(tower.animation_time * 12) % frame_count
+
+    @staticmethod
     def _frame_from_sheet(
         sheet: Any,
         *,
@@ -304,16 +320,8 @@ class TowerRenderer:
         if width <= 0 or height <= 0:
             return frame
 
-        scale = min(
-            _MAGE_UNIT_RENDER_SIZE / width,
-            _MAGE_UNIT_RENDER_SIZE / height,
-            1.0,
-        )
-        target_size = (
-            max(1, round(width * scale)),
-            max(1, round(height * scale)),
-        )
-        if target_size == (width, height):
+        target_size = (_MAGE_UNIT_RENDER_SIZE, _MAGE_UNIT_RENDER_SIZE)
+        if (width, height) == target_size:
             return frame
 
         import pygame

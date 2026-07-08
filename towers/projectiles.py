@@ -29,7 +29,11 @@ class ProjectileSystem:
     ) -> None:
         travel_distance = max(0.0, max_travel_distance)
         safe_speed = max(1.0, speed)
-        lifetime = max(0.35, travel_distance / safe_speed + 1.0)
+        # The range check belongs to target selection, not to a projectile that
+        # has already been fired. Keep enough lifetime for a locked projectile
+        # to catch an enemy that leaves the tower radius while the sprite is in
+        # flight, then expire it safely if the target is gone for too long.
+        lifetime = max(0.35, travel_distance / safe_speed + 2.5)
         self._projectiles.append(
             Projectile(
                 identifier=f"projectile-{self._next_id}",
@@ -113,9 +117,6 @@ class ProjectileSystem:
         movement_budget = projectile.speed * delta_time
 
         while movement_budget > _EPSILON:
-            if projectile.remaining_travel_distance <= _EPSILON:
-                return False
-
             target = enemies_by_id.get(projectile.target_id)
             if target is None:
                 return False
@@ -123,31 +124,25 @@ class ProjectileSystem:
             distance_to_target = projectile.position.distance_to(target.position)
             projectile.direction = self._direction_to(projectile.position, target.position)
 
-            # The target is out of the arrow's remaining range. The arrow can
-            # still fly until that range is exhausted, but can never damage it.
-            if distance_to_target > projectile.remaining_travel_distance + _EPSILON:
-                movement = min(
-                    movement_budget,
-                    projectile.remaining_travel_distance,
-                )
-                projectile.position = projectile.position.move_towards(
-                    target.position,
-                    movement,
-                )
-                projectile.remaining_travel_distance -= movement
-                return projectile.remaining_travel_distance > _EPSILON
-
             if movement_budget + _EPSILON < distance_to_target:
                 projectile.position = projectile.position.move_towards(
                     target.position,
                     movement_budget,
                 )
-                projectile.remaining_travel_distance -= movement_budget
-                return projectile.remaining_travel_distance > _EPSILON
+                projectile.remaining_travel_distance = max(
+                    0.0,
+                    projectile.remaining_travel_distance - movement_budget,
+                )
+                return True
 
-            # The arrow reaches the current target during this frame.
+            # The projectile reaches the locked target during this frame. It can
+            # still deal damage even if the target has already moved outside the
+            # tower attack radius after the shot was created.
             projectile.position = target.position
-            projectile.remaining_travel_distance -= distance_to_target
+            projectile.remaining_travel_distance = max(
+                0.0,
+                projectile.remaining_travel_distance - distance_to_target,
+            )
             movement_budget = max(0.0, movement_budget - distance_to_target)
             commands.extend(
                 self._create_hit_commands(
@@ -162,6 +157,9 @@ class ProjectileSystem:
                 return False
 
             projectile.extra_pierces_remaining -= 1
+            if projectile.remaining_travel_distance <= _EPSILON:
+                return False
+
             next_target = self._find_next_target(projectile, living_enemies)
             if next_target is None:
                 return False
