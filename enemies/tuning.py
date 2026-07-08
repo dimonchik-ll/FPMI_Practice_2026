@@ -1,0 +1,48 @@
+from __future__ import annotations
+
+# Один файл для чисел баланса.
+# Если что-то выглядит плохо, сначала правим здесь, а не ищем магические числа по проекту.
+
+CAMPAIGN_MAX_WAVES = 10
+FINAL_BOSS_WAVE = CAMPAIGN_MAX_WAVES + 1
+
+# Анимации и спрайты
+ENEMY_FRAME_SIZE = 48
+ENEMY_FRAMES_PER_ROW = 6
+ENEMY_DIRECTION_ROWS = {
+    "up": 0,
+    "down": 1,
+    "left": 2,
+    "right": 3,
+}
+ENEMY_TARGET_DRAW_SIZE = 40
+BOSS_TARGET_DRAW_SIZE = 48
+
+# HP bar
+HEALTH_BAR_WIDTH = 42
+HEALTH_BAR_HEIGHT = 7
+HEALTH_BAR_INNER_PADDING = 1
+HEALTH_BAR_OFFSET_Y = 32
+HEALTH_BAR_BORDER_COLOR = (238, 231, 207)
+HEALTH_BAR_BACKGROUND_COLOR = (46, 24, 32)
+HEALTH_BAR_FILL_COLOR = (72, 196, 87)
+HEALTH_BAR_LOW_FILL_COLOR = (220, 68, 58)
+
+# Движение
+EPSILON = 0.0001
+MIN_ENEMY_PATH_GAP = 30.0
+MIN_ENEMY_SPAWN_GAP = 34.0
+LANE_OFFSETS = (-10.0, 0.0, 10.0)
+LANE_SWITCH_SPEED = 42.0
+
+# Волны
+GOAL_ATTACK_DURATION = 0.35
+DEATH_ANIMATION_DURATION = 0.55
+MIN_SPAWN_INTERVAL = 0.25
+MAX_ACTIVE_ENEMIES = 30
+MAX_ENDLESS_SPEED_MULTIPLIER = 1.80
+
+# Бесконечный режим — пока только настройки-почва.
+ENDLESS_START_WAVE = 1
+ENDLESS_BOSS_EVERY = 5
+ENDLESS_MAX_ACTIVE_ENEMIES = 35

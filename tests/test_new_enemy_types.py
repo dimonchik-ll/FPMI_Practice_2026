@@ -1,13 +1,9 @@
 from shared.asset_manifest import ENEMY_WALK_SHEETS
 from shared.contracts import ENEMY_DEFINITIONS, EnemyKind
 
-from enemies.api import (
-    ENEMY_DISPLAY_NAMES,
-    FINAL_BOSS_KIND,
-    FINAL_BOSS_WAVE,
-    is_final_boss_wave,
-    wave_plan_for,
-)
+from enemies.api import ENEMY_DISPLAY_NAMES, wave_plan_for
+from enemies.tuning import CAMPAIGN_MAX_WAVES, FINAL_BOSS_WAVE
+from enemies.waves import FINAL_BOSS_KIND, is_final_boss_wave
 
 
 NEW_ENEMIES = (
@@ -51,6 +47,7 @@ def test_wave_ten_still_uses_new_enemy_types() -> None:
 
 
 def test_final_boss_hook_is_prepared() -> None:
+    assert CAMPAIGN_MAX_WAVES == 10
     assert FINAL_BOSS_WAVE == 11
     assert FINAL_BOSS_KIND == EnemyKind.ENEMY_4
     assert is_final_boss_wave(11)
