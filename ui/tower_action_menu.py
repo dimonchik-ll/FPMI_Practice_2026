@@ -44,12 +44,13 @@ class TowerActionMenu:
     _PRESSED_RADIUS_BONUS = -2
     _BUTTON_GAP = 10
     _BUTTON_Y_OFFSET = 50
+    _BUTTON_Y_OFFSET = 50
     _MAP_MARGIN = 10
     _SHADOW_OFFSET = 3
     _ANIMATION_SPEED = 14.0
 
     _DIALOG_WIDTH = 440
-    _DIALOG_MIN_HEIGHT = 218
+    _DIALOG_MIN_HEIGHT = 306
     _DIALOG_PADDING = 18
     _DIALOG_BUTTON_WIDTH = 136
     _DIALOG_BUTTON_HEIGHT = 40
@@ -367,8 +368,12 @@ class TowerActionMenu:
             border_radius=14,
         )
 
-        title, description, accent = self._dialog_content(tower, snapshot)
         y = dialog.y + self._DIALOG_PADDING
+        title = (
+            "Удалить башню?"
+            if self._dialog_kind == _DialogKind.REMOVE
+            else "Подтвердить улучшение"
+        )
 
         draw_text(
             surface,
@@ -379,28 +384,10 @@ class TowerActionMenu:
         )
         y += self._fonts.section.get_linesize() + 10
 
-        text_width = dialog.width - self._DIALOG_PADDING * 2
-        for line in wrap_text(description, self._fonts.small, text_width):
-            draw_text(
-                surface,
-                line,
-                self._fonts.small,
-                self._theme.body_text,
-                (dialog.x + self._DIALOG_PADDING, y),
-            )
-            y += self._fonts.small.get_linesize()
-
-        if accent is not None:
-            y += 8
-            for line in wrap_text(accent, self._fonts.small, text_width):
-                draw_text(
-                    surface,
-                    line,
-                    self._fonts.small,
-                    (235, 202, 118),
-                    (dialog.x + self._DIALOG_PADDING, y),
-                )
-                y += self._fonts.small.get_linesize()
+        if self._dialog_kind == _DialogKind.REMOVE:
+            self._draw_remove_dialog_body(surface, dialog, tower, y)
+        else:
+            self._draw_upgrade_dialog_body(surface, dialog, tower, snapshot, y)
 
         self._draw_dialog_button(
             surface,
@@ -417,57 +404,216 @@ class TowerActionMenu:
             self._dialog_ok_rect(),
             "ОК",
             _ButtonStyle(
-                fill=self._ok_button_fill(),
-                border=self._ok_button_border(),
-                text=self._theme.body_text,
+                fill=self._ok_button_fill(tower, snapshot),
+                border=self._ok_button_border(tower, snapshot),
+                text=self._ok_button_text_color(tower, snapshot),
             ),
         )
 
-    def _dialog_content(
+    def _draw_remove_dialog_body(
         self,
+        surface: pygame.Surface,
+        dialog: pygame.Rect,
+        tower: TowerView,
+        y: int,
+    ) -> None:
+        text_width = dialog.width - self._DIALOG_PADDING * 2
+        description = (
+            f"Башня {TOWER_DEFINITIONS[tower.kind].title} будет удалена, "
+            "а клетка строительства снова станет свободной."
+        )
+
+        for line in wrap_text(description, self._fonts.small, text_width):
+            draw_text(
+                surface,
+                line,
+                self._fonts.small,
+                self._theme.body_text,
+                (dialog.x + self._DIALOG_PADDING, y),
+            )
+            y += self._fonts.small.get_linesize()
+
+        y += 12
+        self._draw_value_row(
+            surface,
+            dialog,
+            y,
+            "Возврат монет",
+            "0",
+            value_color=(235, 202, 118),
+        )
+
+    def _draw_upgrade_dialog_body(
+        self,
+        surface: pygame.Surface,
+        dialog: pygame.Rect,
         tower: TowerView,
         snapshot: GameSnapshot,
-    ) -> tuple[str, str, str | None]:
-        if self._dialog_kind == _DialogKind.REMOVE:
-            return (
-                "Удалить башню?",
-                (
-                    f"Башня {TOWER_DEFINITIONS[tower.kind].title} будет удалена, "
-                    "а клетка строительства снова станет свободной. Деньги за удаление "
-                    "сейчас не возвращаются."
-                ),
-                None,
-            )
-
+        y: int,
+    ) -> None:
         next_kind = next_tower_kind(tower.kind)
-        cost = tower.upgrade_cost or 0
 
         if next_kind is None:
-            return (
-                "Улучшение недоступно",
+            draw_text(
+                surface,
                 "Эта башня уже находится на максимальном уровне.",
-                None,
+                self._fonts.small,
+                self._theme.body_text,
+                (dialog.x + self._DIALOG_PADDING, y),
             )
+            return
 
         current = TOWER_DEFINITIONS[tower.kind]
         upgraded = TOWER_DEFINITIONS[next_kind]
+        cost = tower.upgrade_cost or 0
         missing_money = max(0, cost - snapshot.player.money)
 
-        description = (
-            f"Улучшить {current.title} до {upgraded.title}? "
-            f"Стоимость улучшения: {cost} монет."
+        draw_text(
+            surface,
+            f"{current.title} → {upgraded.title}",
+            self._fonts.small,
+            self._theme.body_text,
+            (dialog.x + self._DIALOG_PADDING, y),
         )
-        accent = (
-            f"Урон: {current.damage} → {upgraded.damage}; "
-            f"дальность: {int(current.attack_range)} → {int(upgraded.attack_range)}; "
-            f"скорость: {current.attacks_per_second:.1f}/с → "
-            f"{upgraded.attacks_per_second:.1f}/с."
+        y += self._fonts.small.get_linesize() + 8
+
+        self._draw_value_row(
+            surface,
+            dialog,
+            y,
+            "Стоимость",
+            f"{cost} мон.",
+            value_color=(235, 202, 118),
         )
+        y += 34
 
         if missing_money > 0:
-            accent += f" Не хватает {missing_money} монет."
+            self._draw_value_row(
+                surface,
+                dialog,
+                y,
+                "Не хватает",
+                f"{missing_money} мон.",
+                value_color=(236, 138, 113),
+            )
+            y += 34
 
-        return "Подтвердить улучшение", description, accent
+        draw_text(
+            surface,
+            "ИЗМЕНЯЕМЫЕ ХАРАКТЕРИСТИКИ",
+            self._fonts.small,
+            self._theme.muted_text,
+            (dialog.x + self._DIALOG_PADDING, y),
+        )
+        y += self._fonts.small.get_linesize() + 4
+
+        for label, old_value, new_value, improved in (
+            ("Урон", str(current.damage), str(upgraded.damage), upgraded.damage >= current.damage),
+            (
+                "Дальность",
+                str(int(current.attack_range)),
+                str(int(upgraded.attack_range)),
+                upgraded.attack_range >= current.attack_range,
+            ),
+            (
+                "Скорость атаки",
+                f"{current.attacks_per_second:.1f}/с",
+                f"{upgraded.attacks_per_second:.1f}/с",
+                upgraded.attacks_per_second >= current.attacks_per_second,
+            ),
+        ):
+            self._draw_stat_change_row(
+                surface,
+                dialog,
+                y,
+                label,
+                old_value,
+                new_value,
+                improved=improved,
+            )
+            y += 28
+
+    def _draw_value_row(
+        self,
+        surface: pygame.Surface,
+        dialog: pygame.Rect,
+        y: int,
+        label: str,
+        value: str,
+        *,
+        value_color: Color,
+    ) -> None:
+        row = pygame.Rect(
+            dialog.x + self._DIALOG_PADDING,
+            y,
+            dialog.width - self._DIALOG_PADDING * 2,
+            26,
+        )
+        pygame.draw.rect(surface, self._theme.default_card, row, border_radius=6)
+        pygame.draw.rect(surface, self._theme.default_card_border, row, width=1, border_radius=6)
+
+        draw_text(
+            surface,
+            label,
+            self._fonts.small,
+            self._theme.muted_text,
+            (row.x + 10, row.y + 4),
+        )
+        value_surface = self._fonts.small.render(value, True, value_color)
+        surface.blit(value_surface, (row.right - 10 - value_surface.get_width(), row.y + 4))
+
+    def _draw_stat_change_row(
+        self,
+        surface: pygame.Surface,
+        dialog: pygame.Rect,
+        y: int,
+        label: str,
+        old_value: str,
+        new_value: str,
+        *,
+        improved: bool,
+    ) -> None:
+        row = pygame.Rect(
+            dialog.x + self._DIALOG_PADDING,
+            y,
+            dialog.width - self._DIALOG_PADDING * 2,
+            24,
+        )
+
+        label_x = row.x + 10
+        old_x = row.right - 148
+        arrow_x = row.right - 90
+        new_x = row.right - 56
+        new_color: Color = (151, 204, 134) if improved else (236, 138, 113)
+
+        draw_text(
+            surface,
+            label,
+            self._fonts.small,
+            self._theme.body_text,
+            (label_x, row.y + 2),
+        )
+        draw_text(
+            surface,
+            old_value,
+            self._fonts.small,
+            self._theme.muted_text,
+            (old_x, row.y + 2),
+        )
+        draw_text(
+            surface,
+            "→",
+            self._fonts.small,
+            self._theme.muted_text,
+            (arrow_x, row.y + 2),
+        )
+        draw_text(
+            surface,
+            new_value,
+            self._fonts.small,
+            new_color,
+            (new_x, row.y + 2),
+        )
 
     def _draw_map_shade(self, surface: pygame.Surface) -> None:
         map_area = pygame.Rect(0, 0, self._layout.map_width, self._layout.height)
@@ -662,17 +808,29 @@ class TowerActionMenu:
             text=self._theme.body_text,
         )
 
-    def _ok_button_fill(self) -> Color:
+    def _ok_button_fill(self, tower: TowerView, snapshot: GameSnapshot) -> Color:
         if self._dialog_kind == _DialogKind.REMOVE:
             return (116, 58, 57)
 
+        if not self._can_upgrade(tower, snapshot):
+            return self._theme.unavailable_card
+
         return self._theme.selected_card
 
-    def _ok_button_border(self) -> Color:
+    def _ok_button_border(self, tower: TowerView, snapshot: GameSnapshot) -> Color:
         if self._dialog_kind == _DialogKind.REMOVE:
             return (223, 137, 128)
 
+        if not self._can_upgrade(tower, snapshot):
+            return self._theme.unavailable_card_border
+
         return self._theme.selected_card_border
+
+    def _ok_button_text_color(self, tower: TowerView, snapshot: GameSnapshot) -> Color:
+        if self._dialog_kind == _DialogKind.UPGRADE and not self._can_upgrade(tower, snapshot):
+            return self._theme.muted_text
+
+        return self._theme.body_text
 
     @staticmethod
     def _circle_contains(
