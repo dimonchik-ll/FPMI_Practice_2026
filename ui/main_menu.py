@@ -2,12 +2,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 
 import pygame
 
 from ui.settings import MenuSettings, load_settings, save_settings
 from ui.theme import Color, UiFonts, UiTheme
 from ui.widgets import draw_centered_text
+
+
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_MAIN_MENU_BACKGROUND_PATHS = (
+    Path("assets/ui/main_menu_background.png"),
+    _PROJECT_ROOT / "assets" / "ui" / "main_menu_background.png",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,7 +72,6 @@ class MainMenu:
         self._theme = UiTheme()
         self._fonts = UiFonts()
         self._settings: MenuSettings = load_settings()
-
         self._screen = MenuScreen.HOME
         self._selected_level = options[0].level_number
         self._hovered_level: int | None = None
@@ -73,6 +80,9 @@ class MainMenu:
         self._dragged_slider: str | None = None
         self._focused_button_index = 0
         self._preview_cache: dict[tuple[int, int, int], pygame.Surface] = {}
+        self._background_source = self._load_background()
+        self._background_cache: pygame.Surface | None = None
+        self._background_cache_size: tuple[int, int] | None = None
 
     @property
     def selected_level(self) -> int:
@@ -139,38 +149,31 @@ class MainMenu:
             if key in (pygame.K_LEFT, pygame.K_UP):
                 self._move_level_selection(-1)
                 return None
-
             if key in (pygame.K_RIGHT, pygame.K_DOWN):
                 self._move_level_selection(1)
                 return None
-
             if key in (pygame.K_RETURN, pygame.K_SPACE):
                 return MainMenuAction(
                     MainMenuActionKind.START_GAME,
                     self._selected_level,
                 )
-
             return None
 
         buttons = self._buttons_for_current_screen()
         if not buttons:
             return None
-
         if key in (pygame.K_UP, pygame.K_LEFT):
             self._focused_button_index = (
                 self._focused_button_index - 1
             ) % len(buttons)
             return None
-
         if key in (pygame.K_DOWN, pygame.K_RIGHT):
             self._focused_button_index = (
                 self._focused_button_index + 1
             ) % len(buttons)
             return None
-
         if key in (pygame.K_RETURN, pygame.K_SPACE):
             return self._activate(buttons[self._focused_button_index].key)
-
         return None
 
     def _activate(self, key: str) -> MainMenuAction | None:
@@ -193,13 +196,11 @@ class MainMenu:
             self._show(MenuScreen.HOME)
         elif key == "back_modes":
             self._show(MenuScreen.MODES)
-
         return None
 
     def _go_back(self) -> MainMenuAction | None:
         if self._screen == MenuScreen.HOME:
             return MainMenuAction(MainMenuActionKind.QUIT)
-
         if self._screen == MenuScreen.MODES:
             self._show(MenuScreen.HOME)
         elif self._screen == MenuScreen.LEVEL_SELECT:
@@ -208,7 +209,6 @@ class MainMenu:
             self._show(MenuScreen.HOME)
         elif self._screen == MenuScreen.ENDLESS_STUB:
             self._show(MenuScreen.MODES)
-
         return None
 
     def _show(self, screen: MenuScreen) -> None:
@@ -224,12 +224,10 @@ class MainMenu:
             self._settings.sound_enabled = not self._settings.sound_enabled
             self._save_settings()
             return True
-
         if self._music_toggle_rect().collidepoint(position):
             self._settings.music_enabled = not self._settings.music_enabled
             self._save_settings()
             return True
-
         if self._hints_toggle_rect().collidepoint(position):
             self._settings.show_menu_hints = not self._settings.show_menu_hints
             self._save_settings()
@@ -249,7 +247,6 @@ class MainMenu:
         )
         ratio = (mouse_x - slider.rect.x) / slider.rect.width
         value = max(0, min(100, round(ratio * 100)))
-
         if key == "sound_volume" and self._settings.sound_volume != value:
             self._settings.sound_volume = value
             self._save_settings()
@@ -260,9 +257,68 @@ class MainMenu:
     def _save_settings(self) -> None:
         save_settings(self._settings)
 
-    def _draw_background(self, surface: pygame.Surface) -> None:
-        surface.fill((12, 21, 28))
+    def _load_background(self) -> pygame.Surface | None:
+        for path in _MAIN_MENU_BACKGROUND_PATHS:
+            if not path.exists():
+                continue
+            try:
+                image = pygame.image.load(str(path))
+            except pygame.error:
+                continue
+            try:
+                return image.convert()
+            except pygame.error:
+                return image
+        return None
 
+    def _draw_background(self, surface: pygame.Surface) -> None:
+        if self._background_source is None:
+            self._draw_fallback_background(surface)
+        else:
+            screen_size = surface.get_size()
+            if (
+                self._background_cache is None
+                or self._background_cache_size != screen_size
+            ):
+                self._background_cache = self._scale_background_cover(screen_size)
+                self._background_cache_size = screen_size
+
+            surface.blit(self._background_cache, (0, 0))
+            overlay = pygame.Surface(screen_size, pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 72))
+            surface.blit(overlay, (0, 0))
+
+        draw_centered_text(
+            surface,
+            "TOWER DEFENSE",
+            self._fonts.title,
+            self._theme.title_text,
+            pygame.Rect(0, 44, self._screen_rect.width, 44),
+        )
+
+    def _scale_background_cover(self, target_size: tuple[int, int]) -> pygame.Surface:
+        if self._background_source is None:
+            canvas = pygame.Surface(target_size)
+            canvas.fill((12, 21, 28))
+            return canvas
+
+        source_width, source_height = self._background_source.get_size()
+        target_width, target_height = target_size
+        scale = max(target_width / source_width, target_height / source_height)
+        scaled_size = (
+            max(1, round(source_width * scale)),
+            max(1, round(source_height * scale)),
+        )
+        scaled = pygame.transform.scale(self._background_source, scaled_size)
+        canvas = pygame.Surface(target_size)
+        canvas.blit(
+            scaled,
+            scaled.get_rect(center=(target_width // 2, target_height // 2)),
+        )
+        return canvas
+
+    def _draw_fallback_background(self, surface: pygame.Surface) -> None:
+        surface.fill((12, 21, 28))
         pygame.draw.rect(
             surface,
             (18, 33, 43),
@@ -286,14 +342,6 @@ class MainMenu:
             (29, 51, 67),
             (78, self._screen_rect.height - 38),
             150,
-        )
-
-        draw_centered_text(
-            surface,
-            "TOWER DEFENSE",
-            self._fonts.title,
-            self._theme.title_text,
-            pygame.Rect(0, 44, self._screen_rect.width, 44),
         )
 
     def _draw_home(self, surface: pygame.Surface) -> None:
@@ -326,14 +374,12 @@ class MainMenu:
             self._theme.muted_text,
             pygame.Rect(0, 102, self._screen_rect.width, 30),
         )
-
         for option, card_rect in zip(
             self._options,
             self._card_rects(),
             strict=True,
         ):
             self._draw_map_card(surface, option, card_rect)
-
         self._draw_buttons(surface)
         self._draw_footer(surface, "← →: карта ENTER: начать ESC: назад")
 
@@ -345,7 +391,6 @@ class MainMenu:
             self._theme.muted_text,
             pygame.Rect(0, 102, self._screen_rect.width, 30),
         )
-
         self._draw_settings_table(surface)
         self._draw_buttons(surface)
         self._draw_footer(surface, "ESC: назад")
@@ -420,10 +465,8 @@ class MainMenu:
     ) -> None:
         table = self._settings_table_rect()
         label_rect = self._setting_label_rect(row_index)
-
         self._draw_setting_label(surface, label, label_rect)
         self._draw_toggle(surface, toggle_rect, enabled)
-
         if slider is not None and volume is not None:
             self._draw_slider(surface, slider, volume, enabled)
             self._draw_volume_value(
@@ -489,10 +532,7 @@ class MainMenu:
             True,
             self._theme.muted_text,
         )
-        surface.blit(
-            hint_surface,
-            hint_surface.get_rect(center=rect.center),
-        )
+        surface.blit(hint_surface, hint_surface.get_rect(center=rect.center))
 
     def _draw_toggle(
         self,
@@ -508,7 +548,6 @@ class MainMenu:
             else self._theme.default_card_border
         )
         text = "ВКЛ" if enabled else "ВЫКЛ"
-
         pygame.draw.rect(surface, fill, rect, border_radius=14)
         pygame.draw.rect(surface, border, rect, width=2, border_radius=14)
         draw_centered_text(
@@ -566,7 +605,6 @@ class MainMenu:
     ) -> None:
         is_selected = option.level_number == self._selected_level
         is_hovered = option.level_number == self._hovered_level
-
         if is_selected:
             fill = self._theme.selected_card
             border = self._theme.selected_card_border
@@ -602,7 +640,6 @@ class MainMenu:
             width=2,
             border_radius=9,
         )
-
         preview = self._preview_for(option, preview_rect.size)
         surface.blit(preview, preview.get_rect(center=preview_rect.center))
 
@@ -613,7 +650,6 @@ class MainMenu:
             self._theme.title_text,
             pygame.Rect(rect.x, preview_rect.bottom + 12, rect.width, 30),
         )
-
         status = "ВЫБРАНО" if is_selected else "НАЖМИТЕ, ЧТОБЫ ВЫБРАТЬ"
         status_color: Color = (
             (210, 238, 185) if is_selected else self._theme.muted_text
@@ -643,12 +679,10 @@ class MainMenu:
         border: Color = self._theme.default_card_border
         text_color: Color = self._theme.body_text
         border_width = 2
-
         if is_focused or is_hovered:
             fill = self._theme.hover_card
             border = self._theme.hover_card_border
             border_width = 3
-
         if button.key == "start":
             fill = (73, 130, 82) if not is_hovered else (91, 150, 97)
             border = (196, 232, 179)
@@ -674,7 +708,6 @@ class MainMenu:
     def _draw_footer(self, surface: pygame.Surface, text: str) -> None:
         if not self._settings.show_menu_hints:
             return
-
         draw_centered_text(
             surface,
             text,
@@ -697,7 +730,6 @@ class MainMenu:
                     ("quit", "ВЫХОД"),
                 )
             )
-
         if self._screen == MenuScreen.MODES:
             return self._stacked_buttons(
                 (
@@ -706,7 +738,6 @@ class MainMenu:
                     ("back_home", "НАЗАД"),
                 )
             )
-
         if self._screen == MenuScreen.LEVEL_SELECT:
             return self._bottom_buttons(
                 (
@@ -714,10 +745,8 @@ class MainMenu:
                     ("back_modes", "НАЗАД"),
                 )
             )
-
         if self._screen == MenuScreen.SETTINGS:
             return self._settings_buttons()
-
         return self._bottom_buttons((("back_modes", "НАЗАД"),))
 
     def _stacked_buttons(
@@ -729,7 +758,6 @@ class MainMenu:
         gap = 16
         total_height = height * len(descriptions) + gap * (len(descriptions) - 1)
         top = self._screen_rect.centery - total_height // 2 + 52
-
         return tuple(
             _MenuButton(
                 key=key,
@@ -753,7 +781,6 @@ class MainMenu:
         gap = 12
         total_height = height * len(descriptions) + gap * (len(descriptions) - 1)
         top = self._screen_rect.bottom - 116 - total_height
-
         return tuple(
             _MenuButton(
                 key=key,
@@ -772,7 +799,6 @@ class MainMenu:
         table = self._settings_table_rect()
         width = min(300, self._screen_rect.width - 64)
         height = 50
-
         return (
             _MenuButton(
                 key="back_home",
@@ -873,7 +899,6 @@ class MainMenu:
         total_width = card_width * count + horizontal_gap * (count - 1)
         left = (self._screen_rect.width - total_width) // 2
         top = 158
-
         return tuple(
             pygame.Rect(
                 left + index * (card_width + horizontal_gap),
@@ -938,7 +963,6 @@ class MainMenu:
             max(1, round(source_height * scale)),
         )
         scaled = pygame.transform.scale(source, scaled_size)
-
         canvas = pygame.Surface(target_size)
         canvas.fill(self._theme.hint_background)
         canvas.blit(
