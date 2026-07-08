@@ -43,8 +43,7 @@ class TowerActionMenu:
     _HOVER_RADIUS_BONUS = 4
     _PRESSED_RADIUS_BONUS = -2
     _BUTTON_GAP = 10
-    _BUTTON_Y_OFFSET = 50
-    _BUTTON_Y_OFFSET = 50
+    _BUTTON_Y_OFFSET = 42
     _MAP_MARGIN = 10
     _SHADOW_OFFSET = 3
     _ANIMATION_SPEED = 14.0
@@ -55,6 +54,11 @@ class TowerActionMenu:
     _DIALOG_BUTTON_WIDTH = 136
     _DIALOG_BUTTON_HEIGHT = 40
     _DIALOG_BUTTON_GAP = 14
+    _DIALOG_BOTTOM_GAP = 18
+    _DIALOG_SIDE_MARGIN = 28
+    _VALUE_ROW_HEIGHT = 28
+    _STAT_ROW_HEIGHT = 28
+    _STAT_ROW_GAP = 6
 
     def __init__(self, layout: UiLayout, theme: UiTheme, fonts: UiFonts) -> None:
         self._layout = layout
@@ -180,11 +184,11 @@ class TowerActionMenu:
         tower: TowerView,
         snapshot: GameSnapshot,
     ) -> UiAction | None:
-        if self._dialog_cancel_rect().collidepoint(position):
+        if self._dialog_cancel_rect(tower, snapshot).collidepoint(position):
             self._dialog_kind = None
             return None
 
-        if not self._dialog_ok_rect().collidepoint(position):
+        if not self._dialog_ok_rect(tower, snapshot).collidepoint(position):
             return None
 
         dialog_kind = self._dialog_kind
@@ -352,7 +356,7 @@ class TowerActionMenu:
         tower: TowerView,
         snapshot: GameSnapshot,
     ) -> None:
-        dialog = self._dialog_rect()
+        dialog = self._dialog_rect(tower, snapshot)
 
         pygame.draw.rect(
             surface,
@@ -391,7 +395,7 @@ class TowerActionMenu:
 
         self._draw_dialog_button(
             surface,
-            self._dialog_cancel_rect(),
+            self._dialog_cancel_rect(tower, snapshot),
             "ОТМЕНА",
             _ButtonStyle(
                 fill=self._theme.default_card,
@@ -401,7 +405,7 @@ class TowerActionMenu:
         )
         self._draw_dialog_button(
             surface,
-            self._dialog_ok_rect(),
+            self._dialog_ok_rect(tower, snapshot),
             "ОК",
             _ButtonStyle(
                 fill=self._ok_button_fill(tower, snapshot),
@@ -485,7 +489,7 @@ class TowerActionMenu:
             f"{cost} мон.",
             value_color=(235, 202, 118),
         )
-        y += 34
+        y += self._VALUE_ROW_HEIGHT + 8
 
         if missing_money > 0:
             self._draw_value_row(
@@ -496,7 +500,7 @@ class TowerActionMenu:
                 f"{missing_money} мон.",
                 value_color=(236, 138, 113),
             )
-            y += 34
+            y += self._VALUE_ROW_HEIGHT + 8
 
         draw_text(
             surface,
@@ -505,7 +509,7 @@ class TowerActionMenu:
             self._theme.muted_text,
             (dialog.x + self._DIALOG_PADDING, y),
         )
-        y += self._fonts.small.get_linesize() + 4
+        y += self._fonts.small.get_linesize() + 6
 
         for label, old_value, new_value, improved in (
             ("Урон", str(current.damage), str(upgraded.damage), upgraded.damage >= current.damage),
@@ -531,7 +535,7 @@ class TowerActionMenu:
                 new_value,
                 improved=improved,
             )
-            y += 28
+            y += self._STAT_ROW_HEIGHT + self._STAT_ROW_GAP
 
     def _draw_value_row(
         self,
@@ -547,7 +551,7 @@ class TowerActionMenu:
             dialog.x + self._DIALOG_PADDING,
             y,
             dialog.width - self._DIALOG_PADDING * 2,
-            26,
+            self._VALUE_ROW_HEIGHT,
         )
         pygame.draw.rect(surface, self._theme.default_card, row, border_radius=6)
         pygame.draw.rect(surface, self._theme.default_card_border, row, width=1, border_radius=6)
@@ -557,10 +561,10 @@ class TowerActionMenu:
             label,
             self._fonts.small,
             self._theme.muted_text,
-            (row.x + 10, row.y + 4),
+            (row.x + 10, row.centery - self._fonts.small.get_height() // 2),
         )
         value_surface = self._fonts.small.render(value, True, value_color)
-        surface.blit(value_surface, (row.right - 10 - value_surface.get_width(), row.y + 4))
+        surface.blit(value_surface, (row.right - 10 - value_surface.get_width(), row.centery - value_surface.get_height() // 2))
 
     def _draw_stat_change_row(
         self,
@@ -577,7 +581,7 @@ class TowerActionMenu:
             dialog.x + self._DIALOG_PADDING,
             y,
             dialog.width - self._DIALOG_PADDING * 2,
-            24,
+            self._STAT_ROW_HEIGHT,
         )
 
         label_x = row.x + 10
@@ -678,9 +682,29 @@ class TowerActionMenu:
 
         return (left_x, center_y), (right_x, center_y)
 
-    def _dialog_rect(self) -> pygame.Rect:
-        width = min(self._DIALOG_WIDTH, self._layout.map_width - 56)
-        height = self._DIALOG_MIN_HEIGHT
+    def _dialog_rect(self, tower: TowerView, snapshot: GameSnapshot) -> pygame.Rect:
+        width = min(
+            self._DIALOG_WIDTH,
+            max(300, self._layout.map_width - self._DIALOG_SIDE_MARGIN * 2),
+        )
+        content_width = width - self._DIALOG_PADDING * 2
+        body_height = self._dialog_body_height(tower, snapshot, content_width)
+        title_height = self._fonts.section.get_linesize()
+        content_height = (
+            self._DIALOG_PADDING
+            + title_height
+            + 10
+            + body_height
+            + self._DIALOG_BOTTOM_GAP
+            + self._DIALOG_BUTTON_HEIGHT
+            + self._DIALOG_PADDING
+        )
+        available_height = max(220, self._layout.height - self._DIALOG_SIDE_MARGIN * 2)
+        height = min(
+            available_height,
+            max(self._DIALOG_MIN_HEIGHT, content_height),
+        )
+
         return pygame.Rect(
             (self._layout.map_width - width) // 2,
             (self._layout.height - height) // 2,
@@ -688,15 +712,62 @@ class TowerActionMenu:
             height,
         )
 
-    def _dialog_cancel_rect(self) -> pygame.Rect:
-        dialog = self._dialog_rect()
+    def _dialog_body_height(
+        self,
+        tower: TowerView,
+        snapshot: GameSnapshot,
+        content_width: int,
+    ) -> int:
+        if self._dialog_kind == _DialogKind.REMOVE:
+            description = (
+                f"Башня {TOWER_DEFINITIONS[tower.kind].title} будет удалена, "
+                "а клетка строительства снова станет свободной."
+            )
+            line_count = max(1, len(wrap_text(description, self._fonts.small, content_width)))
+            return (
+                line_count * self._fonts.small.get_linesize()
+                + 12
+                + self._VALUE_ROW_HEIGHT
+            )
+
+        next_kind = next_tower_kind(tower.kind)
+        if next_kind is None:
+            text = "Эта башня уже находится на максимальном уровне."
+            line_count = max(1, len(wrap_text(text, self._fonts.small, content_width)))
+            return line_count * self._fonts.small.get_linesize()
+
+        cost = tower.upgrade_cost or 0
+        missing_money = max(0, cost - snapshot.player.money)
+        stat_count = 3
+        return (
+            self._fonts.small.get_linesize()
+            + 8
+            + self._VALUE_ROW_HEIGHT
+            + 8
+            + (self._VALUE_ROW_HEIGHT + 8 if missing_money > 0 else 0)
+            + self._fonts.small.get_linesize()
+            + 6
+            + stat_count * self._STAT_ROW_HEIGHT
+            + (stat_count - 1) * self._STAT_ROW_GAP
+        )
+
+    def _dialog_cancel_rect(
+        self,
+        tower: TowerView,
+        snapshot: GameSnapshot,
+    ) -> pygame.Rect:
+        dialog = self._dialog_rect(tower, snapshot)
         total_width = self._DIALOG_BUTTON_WIDTH * 2 + self._DIALOG_BUTTON_GAP
         x = dialog.centerx - total_width // 2
         y = dialog.bottom - self._DIALOG_PADDING - self._DIALOG_BUTTON_HEIGHT
         return pygame.Rect(x, y, self._DIALOG_BUTTON_WIDTH, self._DIALOG_BUTTON_HEIGHT)
 
-    def _dialog_ok_rect(self) -> pygame.Rect:
-        cancel = self._dialog_cancel_rect()
+    def _dialog_ok_rect(
+        self,
+        tower: TowerView,
+        snapshot: GameSnapshot,
+    ) -> pygame.Rect:
+        cancel = self._dialog_cancel_rect(tower, snapshot)
         return pygame.Rect(
             cancel.right + self._DIALOG_BUTTON_GAP,
             cancel.y,
