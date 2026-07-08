@@ -20,7 +20,6 @@ from ui.api import PANEL_WIDTH, UiSystem
 from ui.economy import Economy
 from ui.main_menu import MainMenu, MainMenuActionKind, MapMenuOption
 
-
 # CAMPAIGN_MAX_WAVES перенесён в enemies.tuning
 MENU_SIZE = (1280, 720)
 
@@ -33,42 +32,45 @@ class TowerDefenseApp:
         self.level_number = level_number
         self.core = self._create_world()
         self.map = self.core.game_map
-
         self.screen = pygame.display.set_mode(
             (self.map.pixel_width + PANEL_WIDTH, self.map.pixel_height)
         )
         pygame.display.set_caption(f"Tower Defense — Карта {self.level_number}")
-
         self.clock = pygame.time.Clock()
         self.renderer = MapRenderer()
         self.towers = TowerSystem()
         self.enemies = EnemySystem()
         self.economy = Economy()
         self.ui = UiSystem(self.map.pixel_width, self.map.pixel_height)
-
         self.wave_number = 1
         self.victory = False
         self.paused = False
         self.running = True
+        self.return_to_menu = False
 
-    def run(self) -> None:
+    def run(self) -> bool:
         while self.running:
             delta_time = self.clock.tick(60) / 1000.0
             self._handle_events()
             self._update(delta_time)
             self._draw()
 
+        return self.return_to_menu
+
     def _create_world(self) -> CoreWorld:
         game_map = GameMap.create_from_level(self.level_number)
+
         return CoreWorld(game_map=game_map)
 
     def _handle_events(self) -> None:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
+                self.return_to_menu = False
                 self.running = False
                 continue
 
             action = self.ui.handle_event(event)
+
             if action is not None:
                 self._handle_ui_action(action.kind, action.payload or {})
                 continue
@@ -101,11 +103,18 @@ class TowerDefenseApp:
         if action_kind == UiActionKind.PAUSE:
             if not self.economy.is_game_over() and not self.victory:
                 self.paused = True
+
             return
 
         if action_kind == UiActionKind.RESUME:
             if not self.economy.is_game_over() and not self.victory:
                 self.paused = False
+
+            return
+
+        if action_kind == UiActionKind.OPEN_MAIN_MENU:
+            self.return_to_menu = True
+            self.running = False
             return
 
         if action_kind == UiActionKind.RESTART:
@@ -117,8 +126,10 @@ class TowerDefenseApp:
                 return
 
             tower_kind = payload.get("tower_kind")
+
             if isinstance(tower_kind, TowerKind) and tower_kind == TowerKind.ARCHER_1:
                 self.economy.select_tower(tower_kind)
+
             return
 
         if action_kind == UiActionKind.CLOSE_TOWER_MENU:
@@ -127,14 +138,18 @@ class TowerDefenseApp:
 
         if action_kind == UiActionKind.UPGRADE_TOWER:
             tower_identifier = payload.get("tower_id")
+
             if isinstance(tower_identifier, str):
                 self._try_upgrade_tower(tower_identifier)
+
             return
 
         if action_kind == UiActionKind.REMOVE_TOWER:
             tower_identifier = payload.get("tower_id")
+
             if isinstance(tower_identifier, str):
                 self._try_remove_tower(tower_identifier)
+
             return
 
         if action_kind == UiActionKind.START_WAVE:
@@ -149,12 +164,10 @@ class TowerDefenseApp:
     def _restart_game(self) -> None:
         self.core = self._create_world()
         self.map = self.core.game_map
-
         self.towers = TowerSystem()
         self.enemies = EnemySystem()
         self.economy = Economy()
         self.ui = UiSystem(self.map.pixel_width, self.map.pixel_height)
-
         self.wave_number = 1
         self.victory = False
         self.paused = False
@@ -169,6 +182,7 @@ class TowerDefenseApp:
             return
 
         tower_kind = self.economy.state.selected_tower
+
         if (
             tower_kind != TowerKind.ARCHER_1
             or not self.economy.can_buy(TowerKind.ARCHER_1)
@@ -177,6 +191,7 @@ class TowerDefenseApp:
 
         cell = self.map.world_to_cell(position)
         request = self.core.create_build_request(cell, tower_kind)
+
         if request is None:
             return
 
@@ -202,6 +217,7 @@ class TowerDefenseApp:
             return
 
         tower = self.towers.tower_at_position(position)
+
         if tower is None:
             self.ui.close_tower_menu()
             return
@@ -213,6 +229,7 @@ class TowerDefenseApp:
             return
 
         upgrade_cost = self.towers.upgrade_cost(tower_identifier)
+
         if upgrade_cost is None or not self.economy.can_afford(upgrade_cost):
             return
 
@@ -224,6 +241,7 @@ class TowerDefenseApp:
             return
 
         removed_tower = self.towers.remove(tower_identifier)
+
         if removed_tower is None:
             return
 
@@ -279,7 +297,6 @@ def _build_menu_options() -> tuple[MapMenuOption, ...]:
         preview = pygame.Surface((game_map.pixel_width, game_map.pixel_height))
         preview.fill((20, 30, 25))
         renderer.draw(preview, game_map)
-
         options.append(
             MapMenuOption(
                 level_number=level_number,
@@ -294,7 +311,6 @@ def _build_menu_options() -> tuple[MapMenuOption, ...]:
 def _run_main_menu() -> int | None:
     screen = pygame.display.set_mode(MENU_SIZE)
     pygame.display.set_caption("Tower Defense")
-
     menu = MainMenu(screen.get_size(), _build_menu_options())
     clock = pygame.time.Clock()
 
@@ -306,6 +322,7 @@ def _run_main_menu() -> int | None:
                 return None
 
             action = menu.handle_event(event)
+
             if action is None:
                 continue
 
@@ -323,8 +340,16 @@ def run() -> None:
     pygame.init()
 
     try:
-        selected_level = _run_main_menu()
-        if selected_level is not None:
-            TowerDefenseApp(selected_level).run()
+        while True:
+            selected_level = _run_main_menu()
+
+            if selected_level is None:
+                break
+
+            should_return_to_menu = TowerDefenseApp(selected_level).run()
+
+            if not should_return_to_menu:
+                break
+
     finally:
         pygame.quit()

@@ -8,6 +8,7 @@ from ui.hud import HudPanel
 from ui.layout import PANEL_WIDTH, UiLayout
 from ui.overlays import EndGameOverlay, PauseOverlay
 from ui.pause_control import PauseControl
+from ui.settings_overlay import SettingsOverlay
 from ui.theme import UiFonts, UiTheme
 from ui.tower_action_menu import TowerActionMenu
 from ui.tower_menu import TowerMenu
@@ -26,6 +27,7 @@ class UiSystem:
         self._snapshot: GameSnapshot | None = None
         self._game_stats = GameStatsPanel(layout, theme, fonts)
         self._pause_overlay = PauseOverlay(layout, theme, fonts)
+        self._settings_overlay = SettingsOverlay(layout, theme, fonts)
         self._end_game_overlay = EndGameOverlay(layout, theme, fonts)
         self._tower_action_menu = TowerActionMenu(layout, theme, fonts)
         self._components: tuple[UiComponent, ...] = (
@@ -44,6 +46,7 @@ class UiSystem:
 
     def handle_event(self, event: pygame.event.Event) -> UiAction | None:
         snapshot = self._snapshot
+
         if snapshot is None:
             return None
 
@@ -53,9 +56,20 @@ class UiSystem:
 
         if snapshot.paused:
             self.close_tower_menu()
-            return self._pause_overlay.handle_event(event, snapshot)
+
+            if self._settings_overlay.is_open:
+                return self._settings_overlay.handle_event(event, snapshot)
+
+            action = self._pause_overlay.handle_event(event, snapshot)
+
+            if action is not None and action.kind == UiActionKind.OPEN_SETTINGS:
+                self._settings_overlay.open()
+                return None
+
+            return action
 
         tower_menu_action = self._tower_action_menu.handle_event(event, snapshot)
+
         if tower_menu_action is not None:
             if tower_menu_action.kind == UiActionKind.CLOSE_TOWER_MENU:
                 self.close_tower_menu()
@@ -75,6 +89,7 @@ class UiSystem:
 
         for component in reversed(self._components):
             action = component.handle_event(event, snapshot)
+
             if action is not None:
                 return action
 
@@ -82,6 +97,7 @@ class UiSystem:
 
     def is_overlay_point(self, position: tuple[int, int]) -> bool:
         snapshot = self._snapshot
+
         if snapshot is not None and (
             snapshot.paused or snapshot.game_over or snapshot.victory
         ):
@@ -102,6 +118,9 @@ class UiSystem:
         if snapshot.game_over or snapshot.victory:
             self._end_game_overlay.draw(surface, snapshot)
         elif snapshot.paused:
-            self._pause_overlay.draw(surface, snapshot)
+            if self._settings_overlay.is_open:
+                self._settings_overlay.draw(surface, snapshot)
+            else:
+                self._pause_overlay.draw(surface, snapshot)
         else:
             self._tower_action_menu.draw(surface, snapshot)

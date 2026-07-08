@@ -44,6 +44,8 @@ class UiActionKind(str, Enum):
     PAUSE = "pause"
     RESUME = "resume"
     RESTART = "restart"
+    OPEN_SETTINGS = "open_settings"
+    OPEN_MAIN_MENU = "open_main_menu"
     UPGRADE_TOWER = "upgrade_tower"
     REMOVE_TOWER = "remove_tower"
     CLOSE_TOWER_MENU = "close_tower_menu"
@@ -65,9 +67,12 @@ class Vector2:
 
     def move_towards(self, target: "Vector2", distance: float) -> "Vector2":
         total = self.distance_to(target)
+
         if total == 0 or distance >= total:
             return target
+
         ratio = distance / total
+
         return Vector2(
             self.x + (target.x - self.x) * ratio,
             self.y + (target.y - self.y) * ratio,
@@ -160,7 +165,6 @@ TOWER_DEFINITIONS: dict[TowerKind, TowerDefinition] = {
     ),
 }
 
-
 TOWER_LEVELS: tuple[TowerKind, ...] = (
     TowerKind.ARCHER_1,
     TowerKind.ARCHER_2,
@@ -176,8 +180,8 @@ TOWER_UPGRADE_PATH: dict[TowerKind, TowerKind] = dict(
     zip(TOWER_LEVELS, TOWER_LEVELS[1:])
 )
 
-# These are additional payments for the next level. The base construction cost
-# comes only from TOWER_DEFINITIONS[ARCHER_1].cost.
+# These are additional payments for the next level.
+# The base construction cost comes only from TOWER_DEFINITIONS[ARCHER_1].cost.
 TOWER_UPGRADE_COSTS: dict[TowerKind, int] = {
     TowerKind.ARCHER_1: 70,
     TowerKind.ARCHER_2: 110,
@@ -280,7 +284,6 @@ ENEMY_DEFINITIONS: dict[EnemyKind, EnemyDefinition] = {
         base_damage=2,
         asset_key="enemy_7",
     ),
-
 }
 
 
@@ -329,6 +332,7 @@ class EnemyView:
     def health_ratio(self) -> float:
         if self.max_health <= 0:
             return 0.0
+
         return max(0.0, min(1.0, self.health / self.max_health))
 
 
