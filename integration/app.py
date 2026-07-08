@@ -7,6 +7,7 @@ from core.levels import LEVEL_PATHS
 from core.map_model import GameMap
 from core.map_renderer import MapRenderer
 from enemies.api import EnemySystem
+from enemies.tuning import CAMPAIGN_MAX_WAVES
 from shared.contracts import (
     GameEventKind,
     GameSnapshot,
@@ -20,7 +21,7 @@ from ui.economy import Economy
 from ui.main_menu import MainMenu, MainMenuActionKind, MapMenuOption
 
 
-CAMPAIGN_MAX_WAVES = 10
+# CAMPAIGN_MAX_WAVES перенесён в enemies.tuning
 MENU_SIZE = (1280, 720)
 
 

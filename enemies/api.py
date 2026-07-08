@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any
 
 from shared.asset_manifest import ENEMY_WALK_SHEETS
+from enemies.tuning import CAMPAIGN_MAX_WAVES, FINAL_BOSS_WAVE
+from enemies.waves import FINAL_BOSS_KIND, is_final_boss_wave
 from shared.assets import load_sprite_frame
 from shared.contracts import (
     DamageCommand,
@@ -127,12 +129,8 @@ MIN_ENEMY_PATH_GAP = 30.0
 MIN_ENEMY_SPAWN_GAP = 34.0
 
 
-FINAL_BOSS_WAVE = 11
-FINAL_BOSS_KIND = EnemyKind.ENEMY_4
-
-
-def is_final_boss_wave(wave_number: int) -> bool:
-    return wave_number == FINAL_BOSS_WAVE
+# FINAL_BOSS_WAVE импортируется из enemies.tuning
+# FINAL_BOSS_KIND импортируется из enemies.waves
 
 
 def wave_plan_for(wave_number: int) -> tuple[EnemyKind, ...]:
