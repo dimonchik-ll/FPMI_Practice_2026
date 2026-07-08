@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from core.levels import get_level_path
-
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -10,8 +9,8 @@ import xml.etree.ElementTree as ET
 from shared.contracts import GridCell, TileKind, Vector2
 
 
-
 GID_MASK = 0x0FFFFFFF
+ROAD_CENTER_SEARCH_WIDTH = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,7 +25,6 @@ class GameMap:
     tiles: list[list[TileKind]]
     tile_size: int = 32
     occupied_cells: set[GridCell] = field(default_factory=set)
-
     tmx_path: Path | None = None
     road_cells: frozenset[GridCell] = field(default_factory=frozenset)
     spawn_cells: frozenset[GridCell] = field(default_factory=frozenset)
@@ -44,7 +42,6 @@ class GameMap:
             raise ValueError("Карта не может быть пустой.")
 
         width = len(self.tiles[0])
-
         if any(len(row) != width for row in self.tiles):
             raise ValueError("Все строки карты должны иметь одинаковую длину.")
 
@@ -54,12 +51,10 @@ class GameMap:
                     raise ValueError(
                         f"Зона строительства {zone.zone_id} вне карты: {cell}."
                     )
-
                 if cell in self._zone_by_cell:
                     raise ValueError(
                         f"Клетка {cell} принадлежит нескольким зонам."
                     )
-
                 self._zone_by_cell[cell] = zone
 
     @classmethod
@@ -73,7 +68,6 @@ class GameMap:
     @classmethod
     def create_from_tmx(cls, map_path: str | Path) -> "GameMap":
         path = Path(map_path).resolve()
-
         if not path.exists():
             raise FileNotFoundError(f"Карта не найдена: {path}")
 
@@ -186,12 +180,10 @@ class GameMap:
 
     def cell_center(self, cell: GridCell) -> Vector2:
         zone = self.get_build_zone(cell)
-
         if zone is not None:
             return zone.center
 
         row, col = cell
-
         return Vector2(
             x=col * self.tile_size + self.tile_size / 2,
             y=row * self.tile_size + self.tile_size / 2,
@@ -202,7 +194,6 @@ class GameMap:
 
     def is_buildable(self, cell: GridCell) -> bool:
         zone = self.get_build_zone(cell)
-
         if zone is not None:
             return not zone.cells.intersection(self.occupied_cells)
 
@@ -216,7 +207,6 @@ class GameMap:
             return False
 
         zone = self.get_build_zone(cell)
-
         if zone is not None:
             self.occupied_cells.update(zone.cells)
             return True
@@ -226,7 +216,6 @@ class GameMap:
 
     def release(self, cell: GridCell) -> None:
         zone = self.get_build_zone(cell)
-
         if zone is not None:
             self.occupied_cells.difference_update(zone.cells)
             return
@@ -248,8 +237,7 @@ class GameMap:
 
         queue: deque[GridCell] = deque(start_cells)
         previous: dict[GridCell, GridCell | None] = {
-            cell: None
-            for cell in start_cells
+            cell: None for cell in start_cells
         }
 
         target: GridCell | None = None
@@ -262,7 +250,6 @@ class GameMap:
                 break
 
             row, col = cell
-
             for neighbor in (
                 (row - 1, col),
                 (row + 1, col),
@@ -282,7 +269,6 @@ class GameMap:
             return ()
 
         route_cells: list[GridCell] = []
-
         while target is not None:
             route_cells.append(target)
             target = previous[target]
@@ -290,8 +276,8 @@ class GameMap:
         route_cells.reverse()
 
         return tuple(
-            self._plain_cell_center(cell)
-            for cell in route_cells
+            self._centered_road_point(route_cells, index)
+            for index in range(len(route_cells))
         )
 
     def _build_legacy_route(self) -> tuple[Vector2, ...]:
@@ -317,7 +303,6 @@ class GameMap:
                 break
 
             row, col = cell
-
             for neighbor in (
                 (row - 1, col),
                 (row + 1, col),
@@ -350,9 +335,128 @@ class GameMap:
             for cell in route_cells
         )
 
-    def _plain_cell_center(self, cell: GridCell) -> Vector2:
+    def _centered_road_point(
+        self,
+        route_cells: list[GridCell],
+        index: int,
+    ) -> Vector2:
+        cell = route_cells[index]
         row, col = cell
 
+        previous_cell = route_cells[index - 1] if index > 0 else None
+        next_cell = route_cells[index + 1] if index + 1 < len(route_cells) else None
+
+        moves_horizontally = (
+            (
+                previous_cell is not None
+                and previous_cell[0] == row
+                and previous_cell[1] != col
+            )
+            or (
+                next_cell is not None
+                and next_cell[0] == row
+                and next_cell[1] != col
+            )
+        )
+
+        moves_vertically = (
+            (
+                previous_cell is not None
+                and previous_cell[1] == col
+                and previous_cell[0] != row
+            )
+            or (
+                next_cell is not None
+                and next_cell[1] == col
+                and next_cell[0] != row
+            )
+        )
+
+        x = col * self.tile_size + self.tile_size / 2
+        y = row * self.tile_size + self.tile_size / 2
+
+        if moves_horizontally:
+            y = self._road_strip_center_y(cell)
+
+        if moves_vertically:
+            x = self._road_strip_center_x(cell)
+
+        return Vector2(x=x, y=y)
+
+    def _road_strip_center_x(self, cell: GridCell) -> float:
+        row, col = cell
+        cols = self._limited_road_strip_values(
+            fixed_value=row,
+            moving_value=col,
+            horizontal=True,
+        )
+
+        return (
+            min(cols) * self.tile_size
+            + (max(cols) + 1) * self.tile_size
+        ) / 2
+
+    def _road_strip_center_y(self, cell: GridCell) -> float:
+        row, col = cell
+        rows = self._limited_road_strip_values(
+            fixed_value=col,
+            moving_value=row,
+            horizontal=False,
+        )
+
+        return (
+            min(rows) * self.tile_size
+            + (max(rows) + 1) * self.tile_size
+        ) / 2
+
+    def _limited_road_strip_values(
+        self,
+        fixed_value: int,
+        moving_value: int,
+        horizontal: bool,
+    ) -> list[int]:
+        values = [moving_value]
+
+        cursor = moving_value - 1
+        while self._road_cell_exists(fixed_value, cursor, horizontal):
+            values.append(cursor)
+            cursor -= 1
+
+        cursor = moving_value + 1
+        while self._road_cell_exists(fixed_value, cursor, horizontal):
+            values.append(cursor)
+            cursor += 1
+
+        values.sort()
+
+        if len(values) <= ROAD_CENTER_SEARCH_WIDTH:
+            return values
+
+        current_index = values.index(moving_value)
+        start_index = max(0, current_index - ROAD_CENTER_SEARCH_WIDTH // 2)
+        end_index = start_index + ROAD_CENTER_SEARCH_WIDTH
+
+        if end_index > len(values):
+            end_index = len(values)
+            start_index = end_index - ROAD_CENTER_SEARCH_WIDTH
+
+        return values[start_index:end_index]
+
+    def _road_cell_exists(
+        self,
+        fixed_value: int,
+        moving_value: int,
+        horizontal: bool,
+    ) -> bool:
+        if horizontal:
+            cell = (fixed_value, moving_value)
+        else:
+            cell = (moving_value, fixed_value)
+
+        return cell in self.road_cells
+
+    def _plain_cell_center(self, cell: GridCell) -> Vector2:
+        row, col = cell
         return Vector2(
             x=col * self.tile_size + self.tile_size / 2,
             y=row * self.tile_size + self.tile_size / 2,
@@ -372,7 +476,6 @@ class GameMap:
         attribute_name: str,
     ) -> int:
         value = element.get(attribute_name)
-
         if value is None:
             raise ValueError(
                 f"Нет атрибута {attribute_name}."
@@ -461,7 +564,6 @@ class GameMap:
                 )
 
             x, y, width, height = cls._object_rect(obj)
-
             markers[marker_type] = frozenset(
                 cls._rect_to_cells(
                     x=x,
@@ -527,10 +629,7 @@ class GameMap:
                 )
 
             if any(
-                row < 0
-                or row >= height
-                or col < 0
-                or col >= width
+                row < 0 or row >= height or col < 0 or col >= width
                 for row, col in cells
             ):
                 raise ValueError(
@@ -589,7 +688,6 @@ class GameMap:
                 continue
 
             value = prop.get("value") or prop.text
-
             if value is not None:
                 return int(value)
 
@@ -612,7 +710,6 @@ class GameMap:
                 )
 
             number = float(value)
-
             if not number.is_integer():
                 raise ValueError(
                     f"{attribute_name} объекта '{obj.get('name')}' "
