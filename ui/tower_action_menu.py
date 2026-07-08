@@ -47,6 +47,11 @@ class TowerActionMenu:
     _MAP_MARGIN = 10
     _SHADOW_OFFSET = 3
     _ANIMATION_SPEED = 14.0
+    _RANGE_FILL: Color = (115, 208, 255, 28)
+    _RANGE_BORDER: Color = (151, 226, 255, 145)
+    _RANGE_DIALOG_FILL: Color = (115, 208, 255, 20)
+    _RANGE_DIALOG_BORDER: Color = (151, 226, 255, 112)
+    _RANGE_BORDER_WIDTH = 2
 
     _DIALOG_WIDTH = 440
     _DIALOG_MIN_HEIGHT = 306
@@ -170,13 +175,50 @@ class TowerActionMenu:
 
         if self._dialog_kind is not None:
             self._draw_map_shade(surface)
+            self._draw_attack_range(surface, tower, dimmed=True)
             self._draw_radial_buttons(surface, tower, snapshot, dimmed=True)
             self._draw_confirmation_dialog(surface, tower, snapshot)
             return
 
+        self._draw_attack_range(surface, tower, dimmed=False)
         self._hovered_button = self._button_at_position(tower, pygame.mouse.get_pos())
         self._update_animation()
         self._draw_radial_buttons(surface, tower, snapshot, dimmed=False)
+
+    def _draw_attack_range(
+        self,
+        surface: pygame.Surface,
+        tower: TowerView,
+        *,
+        dimmed: bool,
+    ) -> None:
+        radius = int(round(tower.attack_range))
+
+        if radius <= 0:
+            return
+
+        map_width = max(1, min(self._layout.map_width, surface.get_width()))
+        map_height = max(1, min(self._layout.height, surface.get_height()))
+        overlay = pygame.Surface((map_width, map_height), pygame.SRCALPHA)
+        center = (round(tower.position.x), round(tower.position.y))
+        fill = self._RANGE_DIALOG_FILL if dimmed else self._RANGE_FILL
+        border = self._RANGE_DIALOG_BORDER if dimmed else self._RANGE_BORDER
+
+        pygame.draw.circle(overlay, fill, center, radius)
+        pygame.draw.circle(
+            overlay,
+            border,
+            center,
+            radius,
+            width=self._RANGE_BORDER_WIDTH,
+        )
+        pygame.draw.circle(
+            overlay,
+            border,
+            center,
+            3,
+        )
+        surface.blit(overlay, (0, 0))
 
     def _handle_dialog_click(
         self,
