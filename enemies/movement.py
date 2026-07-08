@@ -27,8 +27,26 @@ def route_initial_direction(route: tuple[Vector2, ...]) -> tuple[float, float]:
     return 0.0, 1.0
 
 
+def lane_count() -> int:
+    return len(LANE_OFFSETS)
+
+
+def clamp_lane_index(index: int) -> int:
+    return max(0, min(lane_count() - 1, index))
+
+
 def lane_offset_for_index(index: int) -> float:
-    return LANE_OFFSETS[index % len(LANE_OFFSETS)]
+    return LANE_OFFSETS[clamp_lane_index(index)]
+
+
+def move_value_towards(current: float, target: float, step: float) -> float:
+    if abs(target - current) <= step:
+        return target
+
+    if target > current:
+        return current + step
+
+    return current - step
 
 
 def apply_lane_offset(

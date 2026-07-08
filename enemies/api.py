@@ -10,6 +10,12 @@ from enemies.tuning import (
     CAMPAIGN_MAX_WAVES,
     ENEMY_FRAME_SIZE,
     FINAL_BOSS_WAVE,
+    EPSILON,
+    LANE_SWITCH_SPEED,
+    MIN_ENEMY_PATH_GAP,
+    MIN_ENEMY_SPAWN_GAP,
+    OVERTAKE_CLEARANCE_DISTANCE,
+    OVERTAKE_PROGRESS_LOOKAHEAD,
 )
 from enemies.waves import FINAL_BOSS_KIND, is_final_boss_wave
 from enemies.rendering import (
@@ -17,6 +23,12 @@ from enemies.rendering import (
     draw_health_bar,
     screen_center,
     target_draw_size_for_kind,
+)
+from enemies.movement import (
+    apply_lane_offset,
+    lane_count,
+    lane_offset_for_index,
+    move_value_towards,
 )
 from shared.assets import load_sprite_frame
 from shared.contracts import (
@@ -134,9 +146,6 @@ DEATH_ANIMATION_DURATION = 0.55
 MIN_SPAWN_INTERVAL = 0.25
 MAX_ACTIVE_ENEMIES = 30
 MAX_ENDLESS_SPEED_MULTIPLIER = 1.80
-EPSILON = 0.0001
-MIN_ENEMY_PATH_GAP = 30.0
-MIN_ENEMY_SPAWN_GAP = 34.0
 
 
 # FINAL_BOSS_WAVE импортируется из enemies.tuning
@@ -200,6 +209,7 @@ class _EnemyRuntime:
     identifier: str
     kind: EnemyKind
     position: Vector2
+    route_position: Vector2
     path: tuple[Vector2, ...]
     path_index: int
     health: int
@@ -208,6 +218,10 @@ class _EnemyRuntime:
     reward: int
     base_damage: int
     path_progress: float = 0.0
+    lane_index: int = 0
+    target_lane_index: int = 0
+    lane_offset: float = 0.0
+    target_lane_offset: float = 0.0
     facing: Facing = Facing.DOWN
     last_move_direction: Facing = Facing.DOWN
     state: _EnemyState = _EnemyState.WALKING
@@ -281,7 +295,7 @@ class EnemySystem:
                 survivors.append(enemy)
                 continue
 
-            if self._move_distance(enemy, step_distance):
+            if self._move(enemy, delta_time):
                 enemy.state = _EnemyState.ATTACKING
                 enemy.animation_time = 0.0
 
@@ -427,7 +441,6 @@ class EnemySystem:
             and len(self._enemies) < MAX_ACTIVE_ENEMIES
         ):
             if not self._can_spawn_at_start():
-                self._spawn_cooldown = max(self._spawn_cooldown, 0.05)
                 break
 
             self._spawn(self._queue.pop(0))
@@ -473,11 +486,14 @@ class EnemySystem:
             ),
         )
 
+        lane_index = (self._next_id - 1) % lane_count()
+        lane_offset = lane_offset_for_index(lane_index)
         self._enemies.append(
             _EnemyRuntime(
                 identifier=f"enemy-{self._next_id}",
                 kind=kind,
                 position=self._route[0],
+                route_position=self._route[0],
                 path=self._route,
                 path_index=1,
                 path_progress=0.0,
@@ -493,51 +509,136 @@ class EnemySystem:
 
         self._next_id += 1
 
+    def _move(self, enemy: _EnemyRuntime, delta_time: float) -> bool:
+        requested_distance = enemy.speed * delta_time
+        allowed_distance = self._allowed_step_distance(
+            enemy,
+            requested_distance,
+        )
+
+        self._update_lane_offset(enemy, delta_time)
+
+        return self._move_distance(enemy, allowed_distance)
+
     def _allowed_step_distance(
         self,
         enemy: _EnemyRuntime,
-        delta_time: float,
+        requested_distance: float,
     ) -> float:
-        step_distance = enemy.speed * delta_time
-        nearest_ahead_gap: float | None = None
+        if requested_distance <= 0:
+            return 0.0
+
+        blocker = self._same_lane_blocker(enemy)
+
+        if blocker is None:
+            return requested_distance
+
+        distance_to_blocker = blocker.path_progress - enemy.path_progress
+
+        if distance_to_blocker > MIN_ENEMY_PATH_GAP + requested_distance:
+            return requested_distance
+
+        free_lane = self._choose_free_overtake_lane(enemy)
+
+        if free_lane is not None:
+            enemy.target_lane_index = free_lane
+            enemy.target_lane_offset = lane_offset_for_index(free_lane)
+            return requested_distance
+
+        return max(0.0, distance_to_blocker - MIN_ENEMY_PATH_GAP)
+
+    def _same_lane_blocker(
+        self,
+        enemy: _EnemyRuntime,
+    ) -> _EnemyRuntime | None:
+        best: _EnemyRuntime | None = None
+        best_distance = OVERTAKE_PROGRESS_LOOKAHEAD
 
         for other in self._enemies:
             if other is enemy or other.state != _EnemyState.WALKING:
                 continue
 
-            gap = other.path_progress - enemy.path_progress
-
-            if gap <= 0:
+            if other.target_lane_index != enemy.target_lane_index:
                 continue
 
-            if nearest_ahead_gap is None or gap < nearest_ahead_gap:
-                nearest_ahead_gap = gap
+            distance = other.path_progress - enemy.path_progress
 
-        if nearest_ahead_gap is None:
-            return step_distance
+            if 0 < distance < best_distance:
+                best = other
+                best_distance = distance
 
-        return min(
-            step_distance,
-            max(0.0, nearest_ahead_gap - MIN_ENEMY_PATH_GAP),
+        return best
+
+    def _choose_free_overtake_lane(
+        self,
+        enemy: _EnemyRuntime,
+    ) -> int | None:
+        lanes = list(range(lane_count()))
+        lanes.sort(
+            key=lambda lane_index: (
+                lane_index == enemy.target_lane_index,
+                abs(lane_index - enemy.target_lane_index),
+            )
         )
 
-    @staticmethod
-    def _move(enemy: _EnemyRuntime, delta_time: float) -> bool:
-        return EnemySystem._move_distance(enemy, enemy.speed * delta_time)
+        for lane_index in lanes:
+            if lane_index == enemy.target_lane_index:
+                continue
+
+            if self._is_lane_clear_for(enemy, lane_index):
+                return lane_index
+
+        return None
+
+    def _is_lane_clear_for(
+        self,
+        enemy: _EnemyRuntime,
+        lane_index: int,
+    ) -> bool:
+        for other in self._enemies:
+            if other is enemy or other.state != _EnemyState.WALKING:
+                continue
+
+            if other.target_lane_index != lane_index:
+                continue
+
+            if abs(other.path_progress - enemy.path_progress) < OVERTAKE_CLEARANCE_DISTANCE:
+                return False
+
+        return True
 
     @staticmethod
-    def _move_distance(enemy: _EnemyRuntime, distance: float) -> bool:
+    def _update_lane_offset(
+        enemy: _EnemyRuntime,
+        delta_time: float,
+    ) -> None:
+        enemy.lane_offset = move_value_towards(
+            enemy.lane_offset,
+            enemy.target_lane_offset,
+            LANE_SWITCH_SPEED * delta_time,
+        )
+
+        if abs(enemy.lane_offset - enemy.target_lane_offset) <= EPSILON:
+            enemy.lane_offset = enemy.target_lane_offset
+            enemy.lane_index = enemy.target_lane_index
+
+    @staticmethod
+    def _move_distance(
+        enemy: _EnemyRuntime,
+        distance: float,
+    ) -> bool:
         distance_left = max(0.0, distance)
 
-        while distance_left > 0 and enemy.path_index < len(enemy.path):
+        while enemy.path_index < len(enemy.path):
             target = enemy.path[enemy.path_index]
-            delta_x = target.x - enemy.position.x
-            delta_y = target.y - enemy.position.y
-            segment_distance = enemy.position.distance_to(target)
+            delta_x = target.x - enemy.route_position.x
+            delta_y = target.y - enemy.route_position.y
+            segment_distance = enemy.route_position.distance_to(target)
 
             if segment_distance <= EPSILON:
-                enemy.position = target
+                enemy.route_position = target
                 enemy.path_index += 1
+                EnemySystem._update_facing_to_next_segment(enemy)
                 continue
 
             direction = _facing_from_delta(
@@ -548,20 +649,90 @@ class EnemySystem:
             enemy.facing = direction
             enemy.last_move_direction = direction
 
+            if distance_left <= EPSILON:
+                EnemySystem._refresh_visual_position(enemy)
+                return False
+
             if distance_left < segment_distance:
-                enemy.position = enemy.position.move_towards(
+                enemy.route_position = enemy.route_position.move_towards(
                     target,
                     distance_left,
                 )
                 enemy.path_progress += distance_left
+                EnemySystem._refresh_visual_position(enemy)
                 return False
 
-            enemy.position = target
+            enemy.route_position = target
             enemy.path_index += 1
             enemy.path_progress += segment_distance
             distance_left -= segment_distance
+            EnemySystem._update_facing_to_next_segment(enemy)
 
-        return enemy.path_index >= len(enemy.path)
+            if distance_left <= EPSILON:
+                EnemySystem._refresh_visual_position(enemy)
+                return enemy.path_index >= len(enemy.path)
+
+        EnemySystem._refresh_visual_position(enemy)
+        return True
+    @staticmethod
+    def _update_facing_to_next_segment(enemy: _EnemyRuntime) -> None:
+        if enemy.path_index >= len(enemy.path):
+            return
+
+        target = enemy.path[enemy.path_index]
+        delta_x = target.x - enemy.route_position.x
+        delta_y = target.y - enemy.route_position.y
+
+        if abs(delta_x) <= EPSILON and abs(delta_y) <= EPSILON:
+            return
+
+        direction = _facing_from_delta(
+            delta_x,
+            delta_y,
+            enemy.last_move_direction,
+        )
+        enemy.facing = direction
+        enemy.last_move_direction = direction
+
+    @staticmethod
+    def _refresh_visual_position(enemy: _EnemyRuntime) -> None:
+        delta_x, delta_y = EnemySystem._visual_direction_delta(enemy)
+        enemy.position = apply_lane_offset(
+            enemy.route_position,
+            delta_x,
+            delta_y,
+            enemy.lane_offset,
+        )
+
+    @staticmethod
+    def _visual_direction_delta(enemy: _EnemyRuntime) -> tuple[float, float]:
+        if enemy.path_index < len(enemy.path):
+            target = enemy.path[enemy.path_index]
+            delta_x = target.x - enemy.route_position.x
+            delta_y = target.y - enemy.route_position.y
+
+            if abs(delta_x) > EPSILON or abs(delta_y) > EPSILON:
+                return delta_x, delta_y
+
+        if enemy.last_move_direction == Facing.RIGHT:
+            return 1.0, 0.0
+        if enemy.last_move_direction == Facing.LEFT:
+            return -1.0, 0.0
+        if enemy.last_move_direction == Facing.UP:
+            return 0.0, -1.0
+
+        return 0.0, 1.0
+
+    def _can_spawn_at_start(self) -> bool:
+        for enemy in self._enemies:
+            if enemy.state != _EnemyState.WALKING:
+                continue
+
+            if enemy.path_progress < MIN_ENEMY_SPAWN_GAP:
+                return False
+
+        return True
+
     @staticmethod
     def _reduce_damage(kind: EnemyKind, amount: int) -> int:
         armor_by_kind = {
