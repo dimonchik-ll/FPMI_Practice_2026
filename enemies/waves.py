@@ -19,6 +19,11 @@ class WaveSettings:
     reward_multiplier: float
 
 
+BOSS_BY_LEVEL: dict[int, EnemyKind] = {
+    1: EnemyKind.BOSS_1,
+    2: EnemyKind.BOSS_2,
+}
+
 FINAL_BOSS_KIND = EnemyKind.ENEMY_4
 
 
@@ -57,12 +62,30 @@ CAMPAIGN_WAVE_SETTINGS: dict[int, WaveSettings] = {
     ),
 }
 
+FINAL_BOSS_WAVE_SETTINGS = WaveSettings(
+    spawn_interval=1.0,
+    health_multiplier=1.0,
+    speed_multiplier=1.0,
+    reward_multiplier=1.0,
+)
+
 
 def is_final_boss_wave(wave_number: int) -> bool:
     return wave_number == FINAL_BOSS_WAVE
 
 
-def campaign_wave_plan(wave_number: int) -> tuple[EnemyKind, ...]:
+def final_boss_kind_for_level(level_number: int) -> EnemyKind:
+    return BOSS_BY_LEVEL.get(level_number, FINAL_BOSS_KIND)
+
+
+def final_boss_wave_plan(level_number: int = 1) -> tuple[EnemyKind, ...]:
+    return (final_boss_kind_for_level(level_number),)
+
+
+def campaign_wave_plan(
+    wave_number: int,
+    level_number: int = 1,
+) -> tuple[EnemyKind, ...]:
     if wave_number < 1:
         raise ValueError("wave_number must be positive")
 
@@ -70,7 +93,7 @@ def campaign_wave_plan(wave_number: int) -> tuple[EnemyKind, ...]:
         return CAMPAIGN_WAVE_PLANS[wave_number]
 
     if is_final_boss_wave(wave_number):
-        return (FINAL_BOSS_KIND,)
+        return final_boss_wave_plan(level_number)
 
     return endless_wave_plan(wave_number)
 
@@ -113,6 +136,9 @@ def campaign_wave_settings(wave_number: int) -> WaveSettings:
 
     if wave_number in CAMPAIGN_WAVE_SETTINGS:
         return CAMPAIGN_WAVE_SETTINGS[wave_number]
+
+    if is_final_boss_wave(wave_number):
+        return FINAL_BOSS_WAVE_SETTINGS
 
     return endless_wave_settings(wave_number)
 

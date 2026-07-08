@@ -7,7 +7,7 @@ from core.levels import LEVEL_PATHS
 from core.map_model import GameMap
 from core.map_renderer import MapRenderer
 from enemies.api import EnemySystem
-from enemies.tuning import CAMPAIGN_MAX_WAVES
+from enemies.tuning import CAMPAIGN_MAX_WAVES, FINAL_BOSS_WAVE
 from shared.audio import AudioSystem
 from shared.contracts import (
     BUILDABLE_TOWER_KINDS,
@@ -269,7 +269,7 @@ class TowerDefenseApp:
             elif event.kind == GameEventKind.ENEMY_REACHED_GOAL:
                 self.economy.take_base_damage(int(event.payload["damage"]))
             elif event.kind == GameEventKind.WAVE_COMPLETED:
-                if self.wave_number >= CAMPAIGN_MAX_WAVES:
+                if self.wave_number >= FINAL_BOSS_WAVE:
                     self.victory = True
                 else:
                     self.wave_number += 1
