@@ -9,25 +9,58 @@ from ui.widgets import UiComponent, draw_centered_text, draw_text
 
 
 class HudPanel(UiComponent):
+    _SHADOW_WIDTH = 10
+
     def __init__(self, layout: UiLayout, theme: UiTheme, fonts: UiFonts) -> None:
         self._layout = layout
         self._theme = theme
         self._fonts = fonts
 
     def draw(self, surface: pygame.Surface, snapshot: GameSnapshot) -> None:
+        if self._layout.visible_panel.width > 0:
+            self._draw_panel_background(surface)
+            self._draw_header(surface, snapshot)
+        self._draw_toggle_button(surface)
+
+    def _draw_panel_background(self, surface: pygame.Surface) -> None:
+        panel = self._layout.panel
+        shadow_rect = pygame.Rect(
+            panel.x - self._SHADOW_WIDTH,
+            panel.y,
+            self._SHADOW_WIDTH,
+            panel.height,
+        )
+        shadow = pygame.Surface(shadow_rect.size, pygame.SRCALPHA)
+        shadow.fill((0, 0, 0, 70))
+        surface.blit(shadow, shadow_rect.topleft)
         pygame.draw.rect(
             surface,
             self._theme.panel_background,
-            self._layout.panel,
+            panel,
         )
         pygame.draw.line(
             surface,
             self._theme.panel_border,
-            (self._layout.map_width, 0),
-            (self._layout.map_width, self._layout.height),
+            (panel.x, 0),
+            (panel.x, self._layout.height),
             2,
         )
-        self._draw_header(surface, snapshot)
+
+    def _draw_toggle_button(self, surface: pygame.Surface) -> None:
+        rect = self._layout.hud_toggle_button
+        hovered = rect.collidepoint(pygame.mouse.get_pos())
+        fill: Color = (48, 61, 70) if hovered else (37, 49, 57)
+        border: Color = (181, 205, 184) if hovered else self._theme.panel_border
+        pygame.draw.rect(surface, fill, rect, border_radius=10)
+        pygame.draw.rect(surface, border, rect, width=2, border_radius=10)
+        arrow = "›" if self._layout.hud_open else "‹"
+        draw_centered_text(
+            surface,
+            arrow,
+            self._fonts.title,
+            self._theme.title_text,
+            rect,
+        )
 
     def _draw_header(self, surface: pygame.Surface, snapshot: GameSnapshot) -> None:
         draw_text(
