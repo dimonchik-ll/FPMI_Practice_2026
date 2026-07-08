@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Any
+from typing import Any, Protocol
 
 from shared.contracts import (
     BUILDABLE_TOWER_KINDS,
@@ -19,6 +19,11 @@ from towers.projectiles import ProjectileSystem
 from towers.sprites import TowerRenderer
 
 
+class TowerShotAudio(Protocol):
+    def play_tower_shot(self, projectile_kind: str) -> None:
+        ...
+
+
 _INITIAL_BUILD_KINDS = BUILDABLE_TOWER_KINDS
 _TOWER_CLICK_HALF_WIDTH = 52.0
 _TOWER_CLICK_TOP_OFFSET = 118.0
@@ -26,8 +31,9 @@ _TOWER_CLICK_BOTTOM_OFFSET = 42.0
 
 
 class TowerSystem:
-    def __init__(self) -> None:
+    def __init__(self, audio: TowerShotAudio | None = None) -> None:
         self._towers: list[TowerRuntime] = []
+        self._audio = audio
         self._projectiles = ProjectileSystem()
         self._renderer = TowerRenderer()
         self._next_id = 1
@@ -88,6 +94,9 @@ class TowerSystem:
             tower.cooldown_remaining = 1.0 / stats.attacks_per_second
             tower.attack_animation_remaining = 0.22
             tower.animation_time = 0.0
+            if self._audio is not None:
+                self._audio.play_tower_shot(stats.projectile_kind)
+
             self._projectiles.spawn(
                 source_id=tower.identifier,
                 target_id=target.identifier,

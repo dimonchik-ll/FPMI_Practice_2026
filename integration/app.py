@@ -8,6 +8,7 @@ from core.map_model import GameMap
 from core.map_renderer import MapRenderer
 from enemies.api import EnemySystem
 from enemies.tuning import CAMPAIGN_MAX_WAVES
+from shared.audio import AudioSystem
 from shared.contracts import (
     BUILDABLE_TOWER_KINDS,
     GameEventKind,
@@ -26,7 +27,7 @@ MENU_SIZE = (1280, 720)
 
 
 class TowerDefenseApp:
-    def __init__(self, level_number: int) -> None:
+    def __init__(self, level_number: int, audio: AudioSystem | None = None) -> None:
         if not pygame.get_init():
             pygame.init()
 
@@ -38,8 +39,11 @@ class TowerDefenseApp:
         )
         pygame.display.set_caption(f"Tower Defense — Карта {self.level_number}")
         self.clock = pygame.time.Clock()
+        self.audio = audio
+        if self.audio is not None:
+            self.audio.play_game_music()
         self.renderer = MapRenderer()
-        self.towers = TowerSystem()
+        self.towers = TowerSystem(self.audio)
         self.enemies = EnemySystem()
         self.economy = Economy()
         self.ui = UiSystem(self.map.pixel_width, self.map.pixel_height)
@@ -52,6 +56,8 @@ class TowerDefenseApp:
     def run(self) -> bool:
         while self.running:
             delta_time = self.clock.tick(60) / 1000.0
+            if self.audio is not None:
+                self.audio.refresh_settings()
             self._handle_events()
             self._update(delta_time)
             self._draw()
@@ -165,7 +171,7 @@ class TowerDefenseApp:
     def _restart_game(self) -> None:
         self.core = self._create_world()
         self.map = self.core.game_map
-        self.towers = TowerSystem()
+        self.towers = TowerSystem(self.audio)
         self.enemies = EnemySystem()
         self.economy = Economy()
         self.ui = UiSystem(self.map.pixel_width, self.map.pixel_height)
@@ -309,14 +315,18 @@ def _build_menu_options() -> tuple[MapMenuOption, ...]:
     return tuple(options)
 
 
-def _run_main_menu() -> int | None:
+def _run_main_menu(audio: AudioSystem | None = None) -> int | None:
     screen = pygame.display.set_mode(MENU_SIZE)
     pygame.display.set_caption("Tower Defense")
+    if audio is not None:
+        audio.play_menu_music()
     menu = MainMenu(screen.get_size(), _build_menu_options())
     clock = pygame.time.Clock()
 
     while True:
         clock.tick(60)
+        if audio is not None:
+            audio.refresh_settings()
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -339,18 +349,20 @@ def _run_main_menu() -> int | None:
 
 def run() -> None:
     pygame.init()
+    audio = AudioSystem()
 
     try:
         while True:
-            selected_level = _run_main_menu()
+            selected_level = _run_main_menu(audio)
 
             if selected_level is None:
                 break
 
-            should_return_to_menu = TowerDefenseApp(selected_level).run()
+            should_return_to_menu = TowerDefenseApp(selected_level, audio).run()
 
             if not should_return_to_menu:
                 break
 
     finally:
+        audio.stop()
         pygame.quit()
