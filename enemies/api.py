@@ -403,8 +403,16 @@ class EnemySystem:
 
                 pygame.draw.circle(surface, color, center, 16)
 
+    def draw_health_bars(
+        self,
+        surface: Any,
+        camera_offset: Vector2 = Vector2(0.0, 0.0),
+    ) -> None:
+        for enemy in self._enemies:
             if enemy.state == _EnemyState.DYING:
                 continue
+
+            center = screen_center(enemy.position, camera_offset)
 
             draw_health_bar(
                 surface,

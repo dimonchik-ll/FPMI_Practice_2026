@@ -277,8 +277,13 @@ class TowerDefenseApp:
     def _draw(self) -> None:
         self.screen.fill((20, 30, 25))
         self.renderer.draw(self.screen, self.map)
+
         self.enemies.draw(self.screen)
         self.towers.draw(self.screen)
+
+        # HP bar рисуется отдельным верхним слоем после башен,
+        # чтобы башня не перекрывала полоску здоровья врага.
+        self.enemies.draw_health_bars(self.screen)
 
         snapshot = GameSnapshot(
             player=self.economy.state.to_view(),
